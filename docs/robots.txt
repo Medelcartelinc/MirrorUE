@@ -36,3 +36,4 @@ Allow: /
 # Full LLM documentation: https://mirrorue.xyz/llms-full.txt
 
 Sitemap: https://mirrorue.xyz/sitemap.xml
+Sitemap: https://mirrorue.xyz/sitemap.txt
