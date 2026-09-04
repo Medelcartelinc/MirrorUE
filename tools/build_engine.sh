@@ -7,9 +7,12 @@ PY="${PYTHON:-python3}"
 
 echo "==> swift build -c release --product MirrorUE"
 swift build -c release --product MirrorUE
-BIN_DIR="$ROOT/.build/arm64-apple-macosx/release"
+BIN_DIR="$(swift build -c release --show-bin-path 2>/dev/null | tail -n 1 | tr -d '\r\n')"
+if [[ -z "$BIN_DIR" || ! -d "$BIN_DIR" ]]; then
+  BIN_DIR="$ROOT/.build/arm64-apple-macosx/release"
+fi
 if [[ ! -d "$BIN_DIR" ]]; then
-  BIN_DIR="$(swift build -c release --show-bin-path 2>/dev/null | tail -n 1 | tr -d '\r\n')"
+  BIN_DIR="$ROOT/.build/x86_64-apple-macosx/release"
 fi
 BIN="$BIN_DIR/MirrorUE"
 if [[ ! -f "$BIN" ]]; then

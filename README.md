@@ -45,7 +45,7 @@ Wi‑Fi / Net → CoreDevice tunnel → UniversalHID (touch · buttons · keyboa
 
 | Need | Detail |
 |------|--------|
-| Mac | macOS 14+, Xcode Command Line Tools (`swift`) |
+| Mac | macOS 14+ (Intel x86_64 & Apple Silicon ARM64 supported natively) |
 | Phone | **iOS 16+**, USB-paired, unlocked when prompted |
 | Dev | Developer Mode on; Wi‑Fi / Network usbmux pairing for the HID tunnel |
 | Rebuild | `python3 -m pip install -r tools/requirements.txt` |
@@ -60,7 +60,12 @@ Wi‑Fi / Net → CoreDevice tunnel → UniversalHID (touch · buttons · keyboa
 ./install.sh
 ```
 
-This compiles Apple Silicon / Metal optimizations, codesigns the app with camera/screen entitlements, and installs **`MirrorUE.app`** directly into your **`/Applications`** folder and sets up the `mirrorue` CLI shortcut!
+This compiles for your native architecture (Intel `x86_64` or Apple Silicon `arm64`), codesigns the app with camera/screen entitlements, and installs **`MirrorUE.app`** directly into your **`/Applications`** folder and sets up the `mirrorue` CLI shortcut!
+
+To build a standalone distributable disk image:
+```bash
+./scripts/build_dmg.sh
+```
 
 ### Launching MirrorUE
 
