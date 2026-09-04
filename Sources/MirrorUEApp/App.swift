@@ -177,6 +177,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var pendingOrientationResize = false
     /// Native fullscreen session (aspect lock must not fight the space size).
     private var fullScreenSession = false
+    private var isFloatingOnTop = false
+    private var hideBezel = false
     private var sidebarWidthConstraint: NSLayoutConstraint?
     private var workflowPlaybackHoldsLease = false
 
@@ -1173,20 +1175,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
         appMenu.addItem(withTitle: "Performance…", action: #selector(showPerformance), keyEquivalent: "p")
         appMenu.addItem(NSMenuItem.separator())
-        let shot = NSMenuItem(title: "Screenshot", action: #selector(takeScreenshot), keyEquivalent: "s")
-        shot.keyEquivalentModifierMask = [.command, .shift]
+        let shot = NSMenuItem(title: "Cattura schermata (Desktop & Appunti)", action: #selector(takeScreenshot), keyEquivalent: "s")
+        shot.keyEquivalentModifierMask = [.command]
         appMenu.addItem(shot)
-        let rec = NSMenuItem(title: "Start/Stop Recording", action: #selector(toggleRecording), keyEquivalent: "r")
+        let rec = NSMenuItem(title: "Avvia/Interrompi Registrazione", action: #selector(toggleRecording), keyEquivalent: "r")
         rec.keyEquivalentModifierMask = [.command, .shift]
         appMenu.addItem(rec)
-        let paste = NSMenuItem(title: "Paste Mac Clipboard", action: #selector(pasteMacClipboard), keyEquivalent: "v")
+        let audioItem = NSMenuItem(title: "Muto / Attiva Audio iPhone", action: #selector(toggleAudioMute), keyEquivalent: "m")
+        audioItem.keyEquivalentModifierMask = [.command, .shift]
+        appMenu.addItem(audioItem)
+        let paste = NSMenuItem(title: "Incolla appunti Mac", action: #selector(pasteMacClipboard), keyEquivalent: "v")
         paste.keyEquivalentModifierMask = [.command, .shift]
         appMenu.addItem(paste)
-        let touches = NSMenuItem(title: "Toggle Show Touches", action: #selector(toggleShowTouches), keyEquivalent: "t")
+        let touches = NSMenuItem(title: "Mostra / Nascondi Tocchi", action: #selector(toggleShowTouches), keyEquivalent: "t")
         touches.keyEquivalentModifierMask = [.command, .shift]
         appMenu.addItem(touches)
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Quit OmniMirror", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Esci da OmniMirror", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         // ── View Menu (Full Screen & Zoom) ──────────────────────────────────
         let viewMenu = NSMenu(title: "View")
@@ -1215,6 +1220,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let zoomItem = NSMenuItem(title: "Zoom / Maximize Window", action: #selector(zoomWindow), keyEquivalent: "0")
         zoomItem.keyEquivalentModifierMask = [.command]
         viewMenu.addItem(zoomItem)
+        viewMenu.addItem(NSMenuItem.separator())
+
+        let pinItem = NSMenuItem(title: "Sempre in primo piano (Float)", action: #selector(toggleKeepOnTop), keyEquivalent: "t")
+        pinItem.keyEquivalentModifierMask = [.command]
+        viewMenu.addItem(pinItem)
+
+        let bezelItem = NSMenuItem(title: "Attiva/Disattiva Cornice Telefono", action: #selector(toggleBezel), keyEquivalent: "b")
+        bezelItem.keyEquivalentModifierMask = [.command, .shift]
+        viewMenu.addItem(bezelItem)
         viewMenu.addItem(NSMenuItem.separator())
 
         let toggleSb = NSMenuItem(title: "Toggle Automation Sidebar", action: #selector(toggleAutomationSidebar), keyEquivalent: "b")
@@ -2004,9 +2018,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let lat = latency?.snapshot() ?? LatencyWindow.Snapshot(p50Ms: 0, p95Ms: 0, count: 0)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            let isUsb = self.session?.device.connectionType == "USB"
+            let linkBadgeText = isUsb ? "⚡ USB" : "📶 Wi-Fi"
+            let displayLat = lat.p50Ms > 0 ? Int(lat.p50Ms) : Int(lat.p95Ms)
             self.status.stringValue = String(
-                format: "%.0f fps · %@ · p95 %.0fms · %@",
-                fps, self.codecLabel, lat.p95Ms, detail
+                format: "%.0f fps · %@ · p50 %.0fms / p95 %.0fms · %@",
+                fps, self.codecLabel, lat.p50Ms, lat.p95Ms, detail
             )
             // Hide on-screen overlay badges once connected to prevent UI clutter / redundancy
             if self.didRevealMirror {
@@ -2015,12 +2032,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self.linkBadge.isHidden = true
             }
             let isConnected = self.connectionState.isConnected || self.didRevealMirror
-            let linkName = self.session?.device.connectionType ?? "USB"
             self.headerBar?.updateDeviceStatus(
                 name: self.cachedDeviceName,
-                link: linkName,
+                link: linkBadgeText,
                 fps: Int(fps),
-                latencyMs: Int(lat.p95Ms),
+                latencyMs: displayLat,
                 connected: isConnected
             )
         }
@@ -2075,6 +2091,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             takeScreenshot()
         case "record":
             toggleRecording()
+        case "audio":
+            toggleAudioMute()
+        case "pin":
+            toggleKeepOnTop()
         case "pasteclip":
             pasteMacClipboard()
         default:
@@ -2322,13 +2342,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func takeScreenshot() {
-        let url = CaptureStudio.shared.saveScreenshot(metalView?.latestPixelBuffer())
+        guard let pb = metalView?.latestPixelBuffer() else {
+            status.stringValue = "screenshot failed — wait for a live frame"
+            return
+        }
+        let url = CaptureStudio.shared.saveScreenshot(pb)
         if let url {
-            status.stringValue = "screenshot · \(url.lastPathComponent)"
+            if let image = NSImage(contentsOf: url) {
+                let pboard = NSPasteboard.general
+                pboard.clearContents()
+                pboard.writeObjects([image])
+            }
+            status.stringValue = "screenshot · \(url.lastPathComponent) (salvato & copiato)"
+            NSSound(named: "Tink")?.play()
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } else {
-            status.stringValue = "screenshot failed — wait for a live frame"
+            status.stringValue = "screenshot failed"
         }
+    }
+
+    @objc func toggleKeepOnTop() {
+        isFloatingOnTop.toggle()
+        window.level = isFloatingOnTop ? .floating : .normal
+        dock.setPinned(isFloatingOnTop)
+        status.stringValue = isFloatingOnTop ? "finestra sempre in primo piano" : "finestra standard"
+    }
+
+    @objc func toggleBezel() {
+        hideBezel.toggle()
+        bezel.layer?.borderWidth = hideBezel ? 0 : 1.25
+        bezel.layer?.cornerRadius = hideBezel ? 0 : 26
+        rim.isHidden = hideBezel
+        status.stringValue = hideBezel ? "cornice nascosta" : "cornice visibile"
+    }
+
+    @objc func toggleAudioMute() {
+        guard let capture = capture else { return }
+        capture.isAudioMuted.toggle()
+        let muted = capture.isAudioMuted
+        dock.setAudioMuted(muted)
+        status.stringValue = muted ? "audio muto" : "audio attivo"
     }
 
     @objc func toggleRecording() {
@@ -2732,6 +2785,7 @@ final class FrameView: MTKView, MTKViewDelegate {
             // Double-buffering for lowest input-to-display latency
             metal.maximumDrawableCount = 2
             metal.displaySyncEnabled = true
+            metal.allowsNextDrawableTimeout = false
         }
         self.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         commandQueue = device.makeCommandQueue()!

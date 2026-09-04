@@ -98,11 +98,16 @@ cat << 'EOF' > "$APP_BUNDLE/Contents/Info.plist"
 </plist>
 EOF
 
-# 4. Code Sign App Bundle
 echo -e "\n${CYAN}==> Signing OmniMirror with entitlements...${RESET}"
 xattr -cr "$APP_BUNDLE"
-codesign --force --deep --sign - --entitlements "$ROOT/MirrorUE.entitlements" "$APP_BUNDLE"
-echo -e "${GREEN}✓ App signed successfully${RESET}"
+security unlock-keychain -p omnibar-signing "$HOME/Library/Keychains/omnibar-signing.keychain-db" 2>/dev/null || true
+if security find-certificate -c "OmniBar Signing" >/dev/null 2>&1; then
+  codesign --force --deep --sign "OmniBar Signing" --entitlements "$ROOT/MirrorUE.entitlements" "$APP_BUNDLE"
+  echo -e "${GREEN}✓ App signed with stable identity (OmniBar Signing)${RESET}"
+else
+  codesign --force --deep --sign - --entitlements "$ROOT/MirrorUE.entitlements" "$APP_BUNDLE"
+  echo -e "${GREEN}✓ App signed ad-hoc${RESET}"
+fi
 
 # Also mirror bundle as MirrorUE.app for backwards compatibility
 rm -rf dist/MirrorUE.app

@@ -22,7 +22,7 @@ final class CaptureStudio {
     func saveScreenshot(_ pixelBuffer: CVPixelBuffer?) -> URL? {
         let dir = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        let url = dir.appendingPathComponent("MirrorUE-\(Self.stamp()).png")
+        let url = dir.appendingPathComponent("OmniMirror-\(Self.stamp()).png")
         return writePNG(pixelBuffer, to: url) ? url : nil
     }
 

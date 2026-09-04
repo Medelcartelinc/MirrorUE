@@ -20,7 +20,7 @@ final class ControlCenterDock: NSView {
     private static let barRadius: CGFloat = 18
 
     /// Intrinsic width of the glass capsule at full size (for compact threshold).
-    static let preferredWidth: CGFloat = 422
+    static let preferredWidth: CGFloat = 520
 
     /// Never drive the NSWindow size — a required intrinsic width caused
     /// `_changeWindowFrameFromConstraintsIfNecessary` layout-pass crashes.
@@ -86,18 +86,24 @@ final class ControlCenterDock: NSView {
         ])
 
         appendGroup([
-            ("house.fill", "home", "Écran d'accueil — bouton Home iPhone"),
-            ("lock.fill", "lock", "Verrouiller l'iPhone"),
-            ("square.stack.3d.up.fill", "apps", "App Switcher — applications ouvertes"),
+            ("house.fill", "home", "Schermata Home iPhone"),
+            ("lock.fill", "lock", "Blocca schermo iPhone"),
+            ("square.stack.3d.up.fill", "apps", "App Switcher — app aperte"),
         ])
         appendDivider()
         appendGroup([
+            ("speaker.wave.2.fill", "audio", "Audio iPhone — silenzia/attiva (⌘M)"),
             ("speaker.minus.fill", "volume-down", "Volume −"),
             ("speaker.plus.fill", "volume-up", "Volume +"),
         ])
         appendDivider()
         appendGroup([
-            ("sparkles", "agent", "Assistant IA — contrôler l'iPhone par objectif"),
+            ("camera.fill", "screenshot", "Cattura schermata HD (⌘S)"),
+            ("pin.fill", "pin", "Sempre in primo piano (⌘T)"),
+        ])
+        appendDivider()
+        appendGroup([
+            ("sparkles", "agent", "Assistente IA — automazione iPhone"),
         ])
     }
 
@@ -120,6 +126,21 @@ final class ControlCenterDock: NSView {
             b.layer?.cornerRadius = on ? 8 : Self.radius
         }
         needsLayout = true
+    }
+
+    func setAudioMuted(_ muted: Bool) {
+        let symbol = muted ? "speaker.slash.fill" : "speaker.wave.2.fill"
+        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+            .applying(NSImage.SymbolConfiguration(hierarchicalColor: .white))
+        buttons["audio"]?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Audio")?
+            .withSymbolConfiguration(config)
+        buttons["audio"]?.toolTip = muted ? "Audio disattivato — clicca per attivare (⌘M)" : "Audio attivo — clicca per silenziare (⌘M)"
+        buttons["audio"]?.layer?.backgroundColor = muted ? Self.activeFill : Self.idleFill
+    }
+
+    func setPinned(_ pinned: Bool) {
+        buttons["pin"]?.layer?.backgroundColor = pinned ? Self.activeFill : Self.idleFill
+        buttons["pin"]?.toolTip = pinned ? "Disattiva finestra sempre in primo piano (⌘T)" : "Mantieni finestra sempre in primo piano (⌘T)"
     }
 
     func setMusicSafe(_ on: Bool) {
