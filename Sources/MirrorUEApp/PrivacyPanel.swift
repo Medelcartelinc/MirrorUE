@@ -26,13 +26,13 @@ final class PrivacyPanel: NSView {
         title.translatesAutoresizingMaskIntoConstraints = false
 
         let body = NSTextField(wrappingLabelWithString: """
-        MirrorUE talks only to an iPhone that you have physically connected, unlocked, trusted, and authorized for development.
+        OmniMirror talks only to an iPhone that you have physically connected, unlocked, trusted, and authorized for development.
 
-        • Screen frames and keystrokes stay on this Mac (and the phone). Nothing is uploaded to MirrorUE servers — there are none.
+        • Screen frames and keystrokes stay on this Mac (and the phone). Nothing is uploaded to OmniMirror servers — there are none.
         • The local automation API binds to 127.0.0.1 only.
         • Developer Mode is required because touch/keyboard use Apple’s CoreDevice / UniversalHID developer services.
         • Pairing records and credentials must never be redistributed.
-        • DRM apps may show a black screen while mirrored — that is enforced by the OS, not MirrorUE.
+        • DRM apps may show a black screen while mirrored — that is enforced by the OS, not OmniMirror.
         • Optional diagnostics you copy stay on your clipboard until you paste them elsewhere.
 
         Permissions: camera / screen capture (CoreMediaIO), local network (CoreDevice tunnel).
@@ -67,16 +67,17 @@ final class PrivacyPanel: NSView {
             close.centerXAnchor.constraint(equalTo: effect.centerXAnchor),
             close.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -16),
         ])
+    }
 
-        let click = NSClickGestureRecognizer(target: self, action: #selector(backdrop(_:)))
-        addGestureRecognizer(click)
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        // Absorb backdrop clicks so they don't drag the window or fall through
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func close() { onClose?() }
-    @objc private func backdrop(_ gr: NSClickGestureRecognizer) {
-        // Ignore — require Close button for intentional dismiss of legal text.
-    }
 }

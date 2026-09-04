@@ -1,7 +1,7 @@
 import AppKit
 import ControlKit
 
-/// In-app settings (replaces most MIRRORUE_* env vars for end users).
+/// In-app settings for OmniMirror.
 final class SettingsPanel: NSView {
     var onClose: (() -> Void)?
     var onApply: (() -> Void)?
@@ -12,10 +12,13 @@ final class SettingsPanel: NSView {
     private let landPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private var touchesCheck: NSButton!
 
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.45).cgColor
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.50).cgColor
 
         effect.material = .hudWindow
         effect.blendingMode = .withinWindow
@@ -27,7 +30,7 @@ final class SettingsPanel: NSView {
         effect.translatesAutoresizingMaskIntoConstraints = false
         addSubview(effect)
 
-        let title = NSTextField(labelWithString: "Settings")
+        let title = NSTextField(labelWithString: "OmniMirror Settings")
         title.font = .systemFont(ofSize: 18, weight: .semibold)
         title.alignment = .center
         title.translatesAutoresizingMaskIntoConstraints = false
@@ -42,7 +45,7 @@ final class SettingsPanel: NSView {
         form.addArrangedSubview(labeled("iPhone keyboard", control: kbPopup))
         form.addArrangedSubview(labeled("Landscape touch", control: landPopup))
 
-        let touches = NSButton(checkboxWithTitle: "Show touches", target: nil, action: nil)
+        let touches = NSButton(checkboxWithTitle: "Show touches", target: self, action: #selector(touchesToggled(_:)))
         touches.state = MirrorUESettings.showTouches ? .on : .off
         touches.translatesAutoresizingMaskIntoConstraints = false
         self.touchesCheck = touches
@@ -72,11 +75,12 @@ final class SettingsPanel: NSView {
 
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelClicked))
         cancel.bezelStyle = .rounded
+        cancel.keyEquivalent = "\u{1b}"
         cancel.translatesAutoresizingMaskIntoConstraints = false
 
         let buttons = NSStackView(views: [cancel, done])
         buttons.orientation = .horizontal
-        buttons.spacing = 10
+        buttons.spacing = 12
         buttons.translatesAutoresizingMaskIntoConstraints = false
 
         effect.addSubview(title)
@@ -91,25 +95,29 @@ final class SettingsPanel: NSView {
             preferredWidth,
             effect.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -16),
 
-            title.topAnchor.constraint(equalTo: effect.topAnchor, constant: 20),
+            title.topAnchor.constraint(equalTo: effect.topAnchor, constant: 22),
             title.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 20),
             title.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -20),
 
             form.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 18),
-            form.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 24),
-            form.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -24),
+            form.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 26),
+            form.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -26),
 
-            buttons.topAnchor.constraint(equalTo: form.bottomAnchor, constant: 20),
-            buttons.centerXAnchor.constraint(equalTo: effect.centerXAnchor),
-            buttons.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -18),
+            buttons.topAnchor.constraint(equalTo: form.bottomAnchor, constant: 22),
+            buttons.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -26),
+            buttons.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -20),
         ])
-
-        let click = NSClickGestureRecognizer(target: self, action: #selector(backdropClicked(_:)))
-        addGestureRecognizer(click)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        if !effect.frame.contains(p) {
+            onClose?()
+        }
+    }
 
     private func labeled(_ title: String, control: NSView) -> NSView {
         let label = NSTextField(labelWithString: title)
@@ -137,6 +145,10 @@ final class SettingsPanel: NSView {
         }
     }
 
+    @objc private func touchesToggled(_ sender: NSButton) {
+        MirrorUESettings.showTouches = (sender.state == .on)
+    }
+
     @objc private func doneClicked() {
         if let raw = fpsPopup.selectedItem?.representedObject as? Int,
            let mode = MirrorUESettings.FrameRate(rawValue: raw) {
@@ -150,16 +162,13 @@ final class SettingsPanel: NSView {
            let mode = MirrorUESettings.LandscapeHome(rawValue: raw) {
             MirrorUESettings.landscapeHome = mode
         }
-        MirrorUESettings.showTouches = touchesCheck.state == .on
+        MirrorUESettings.showTouches = (touchesCheck.state == .on)
         MirrorUESettings.applyToEnvironment()
         onApply?()
         onClose?()
     }
 
-    @objc private func cancelClicked() { onClose?() }
-
-    @objc private func backdropClicked(_ gr: NSClickGestureRecognizer) {
-        let p = gr.location(in: self)
-        if !effect.frame.contains(p) { onClose?() }
+    @objc private func cancelClicked() {
+        onClose?()
     }
 }

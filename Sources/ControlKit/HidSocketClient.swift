@@ -43,10 +43,8 @@ public final class HidSocketClient: @unchecked Sendable {
         }
     }
 
-    /// Atomic tap on the HID queue (contact → hold → release). Avoids coalescing
-    /// a press into the next move when contact/release are posted separately.
-    /// Default hold is intentionally firm — short contacts are often ignored by iOS.
-    public func tap(x: Int, y: Int, holdMs: useconds_t = 160_000) {
+    /// Atomic tap on the HID queue (contact → hold → release). Fast and responsive.
+    public func tap(x: Int, y: Int, holdMs: useconds_t = 25_000) {
         queue.async { [weak self] in
             guard let self else { return }
             // Drain any pending move stream first.
@@ -55,10 +53,9 @@ public final class HidSocketClient: @unchecked Sendable {
                 self.sendTouch(contact: ev.contact, x: ev.x, y: ev.y)
             }
             self.sendTouch(contact: true, x: x, y: y)
-            // Settle + reaffirm so Indigo doesn't treat a single report as a ghost.
-            usleep(45_000)
+            usleep(10_000)
             self.sendTouch(contact: true, x: x, y: y)
-            usleep(max(holdMs, 100_000))
+            usleep(max(holdMs, 15_000))
             self.sendTouch(contact: false, x: x, y: y)
         }
     }

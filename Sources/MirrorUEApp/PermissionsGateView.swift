@@ -160,7 +160,7 @@ final class PermissionsGateView: NSView {
             stepLabel.stringValue = "PERMISSION"
             titleLabel.stringValue = "Camera / Continuity"
             bodyLabel.stringValue =
-                "MirrorUE needs camera access so macOS can show your iPhone display (CoreMediaIO).\n\nTap Allow once — we won’t ask again if it’s already granted.\n\nScreen Recording for MirrorUE is optional; the agent uses the live phone frame API, not Mac screencapture."
+                "OmniMirror needs camera access so macOS can show your iPhone display (CoreMediaIO).\n\nTap Allow once — we won’t ask again if it’s already granted.\n\nScreen Recording for OmniMirror is optional; the agent uses the live phone frame API, not Mac screencapture."
             let status = AVCaptureDevice.authorizationStatus(for: .video)
             statusLabel.stringValue = status == .denied || status == .restricted
                 ? "Denied — open System Settings → Privacy → Camera"

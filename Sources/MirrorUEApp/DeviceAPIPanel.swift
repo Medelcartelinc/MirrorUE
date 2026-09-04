@@ -5,7 +5,7 @@ final class DeviceAPIPanel: NSView {
     private let effect = NSVisualEffectView()
     private let titleLabel = NSTextField(labelWithString: "API & CLI Studio")
     private let subtitleLabel = NSTextField(
-        wrappingLabelWithString: "MirrorUE Pro exposes a zero-latency loopback HTTP API and CLI executable for QA and CI/CD automation."
+        wrappingLabelWithString: "OmniMirror exposes an ultra-low latency loopback HTTP API and CLI executable for QA and automation."
     )
 
     private let statusBadge = NSTextField(labelWithString: "● 127.0.0.1:8090 Active")

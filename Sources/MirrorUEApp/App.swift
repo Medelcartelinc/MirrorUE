@@ -219,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "MirrorUE"
+        window.title = "OmniMirror"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
@@ -1159,7 +1159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let appItem = NSMenuItem()
         appItem.submenu = appMenu
         main.addItem(appItem)
-        appMenu.addItem(withTitle: "About MirrorUE", action: #selector(showAbout), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About OmniMirror", action: #selector(showAbout), keyEquivalent: "")
         appMenu.addItem(withTitle: "Privacy & Security…", action: #selector(showPrivacy), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
@@ -1186,30 +1186,102 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         touches.keyEquivalentModifierMask = [.command, .shift]
         appMenu.addItem(touches)
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Quit MirrorUE", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit OmniMirror", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
+        // ── View Menu (Full Screen & Zoom) ──────────────────────────────────
+        let viewMenu = NSMenu(title: "View")
+        let viewItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
+        viewItem.submenu = viewMenu
+        main.addItem(viewItem)
+
+        let fsItem = NSMenuItem(title: "Toggle Full Screen", action: #selector(toggleFullScreenMode), keyEquivalent: "f")
+        fsItem.keyEquivalentModifierMask = [.control, .command]
+        viewMenu.addItem(fsItem)
+        viewMenu.addItem(NSMenuItem.separator())
+
+        let scale1 = NSMenuItem(title: "Actual Size (100%)", action: #selector(scaleActualSize), keyEquivalent: "1")
+        scale1.keyEquivalentModifierMask = [.command]
+        viewMenu.addItem(scale1)
+
+        let scale2 = NSMenuItem(title: "Large Size (150%)", action: #selector(scaleLarge), keyEquivalent: "2")
+        scale2.keyEquivalentModifierMask = [.command]
+        viewMenu.addItem(scale2)
+
+        let scale3 = NSMenuItem(title: "Fit Screen (200%)", action: #selector(scaleFitScreen), keyEquivalent: "3")
+        scale3.keyEquivalentModifierMask = [.command]
+        viewMenu.addItem(scale3)
+        viewMenu.addItem(NSMenuItem.separator())
+
+        let zoomItem = NSMenuItem(title: "Zoom / Maximize Window", action: #selector(zoomWindow), keyEquivalent: "0")
+        zoomItem.keyEquivalentModifierMask = [.command]
+        viewMenu.addItem(zoomItem)
+        viewMenu.addItem(NSMenuItem.separator())
+
+        let toggleSb = NSMenuItem(title: "Toggle Automation Sidebar", action: #selector(toggleAutomationSidebar), keyEquivalent: "b")
+        toggleSb.keyEquivalentModifierMask = [.command]
+        viewMenu.addItem(toggleSb)
+
+        // ── Window Menu ─────────────────────────────────────────────────────
         let windowMenu = NSMenu(title: "Window")
         let windowItem = NSMenuItem(title: "Window", action: nil, keyEquivalent: "")
         windowItem.submenu = windowMenu
         main.addItem(windowItem)
+
+        let minItem = NSMenuItem(title: "Minimize", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
+        minItem.keyEquivalentModifierMask = [.command]
+        windowMenu.addItem(minItem)
+        windowMenu.addItem(withTitle: "Zoom", action: #selector(zoomWindow), keyEquivalent: "")
+        windowMenu.addItem(NSMenuItem.separator())
+        windowMenu.addItem(withTitle: "Toggle Full Screen", action: #selector(toggleFullScreenMode), keyEquivalent: "")
+        windowMenu.addItem(NSMenuItem.separator())
         windowMenu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         windowMenu.addItem(withTitle: "Workflows", action: #selector(showWorkflows), keyEquivalent: "")
         windowMenu.addItem(withTitle: "AI Runs", action: #selector(showAgent), keyEquivalent: "")
         windowMenu.addItem(withTitle: "AI Provider…", action: #selector(showAIProviderSettings), keyEquivalent: "")
-        windowMenu.addItem(
-            withTitle: "Toggle Automation Sidebar",
-            action: #selector(toggleAutomationSidebar),
-            keyEquivalent: ""
-        )
         windowMenu.addItem(withTitle: "Performance…", action: #selector(showPerformance), keyEquivalent: "p")
 
         NSApp.mainMenu = main
     }
 
+    @objc func toggleFullScreenMode() {
+        window.toggleFullScreen(nil)
+    }
+
+    @objc func zoomWindow() {
+        window.zoom(nil)
+    }
+
+    @objc func scaleActualSize() {
+        scaleWindow(scale: 1.0)
+    }
+
+    @objc func scaleLarge() {
+        scaleWindow(scale: 1.5)
+    }
+
+    @objc func scaleFitScreen() {
+        scaleWindow(scale: 2.0)
+    }
+
+    private func scaleWindow(scale: CGFloat) {
+        guard window != nil, !inFullScreen else { return }
+        let aspect = max(mirrorAspect, 0.01)
+        let baseH: CGFloat = 844.0 * scale
+        let baseW: CGFloat = baseH * aspect
+        let padX = sidePad * 2
+        let target = NSSize(width: baseW + padX + sidebarChromeWidth, height: baseH + chromeY)
+        let frame = window.frameRect(forContentRect: NSRect(origin: window.frame.origin, size: target))
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.25
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().setFrame(frame, display: true)
+        }
+    }
+
     @objc private func showAbout() {
         let alert = NSAlert()
-        alert.messageText = "MirrorUE"
-        alert.informativeText = "Control a development iPhone from your Mac.\nCoreMediaIO + CoreDevice · MIT License\nLocal API: http://127.0.0.1:\(LocalAPIServer.shared.port)/v1/status"
+        alert.messageText = "OmniMirror"
+        alert.informativeText = "Ultra-low-latency iPhone screen mirroring & touch control for macOS.\nCoreMediaIO + CoreDevice UniversalHID · By Medelcartelinc\nLocal API: http://127.0.0.1:\(LocalAPIServer.shared.port)/v1/status"
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Privacy…")
         if alert.runModal() == .alertSecondButtonReturn {
@@ -1238,11 +1310,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self?.settingsPanel = nil
         }
         panel.onApply = { [weak self] in
-            self?.status.stringValue = "settings saved · \(MirrorUESettings.captureFPS) fps · \(MirrorUESettings.keyboardMode.rawValue)"
-            // Restart capture rate on next session; FPS is read when attach runs.
-            if let capture = self?.capture, capture.isRunning {
-                capture.stop()
-                capture.start()
+            guard let self else { return }
+            self.status.stringValue = "settings saved · \(MirrorUESettings.captureFPS) fps · \(MirrorUESettings.keyboardMode.rawValue)"
+            if let capture = self.capture, capture.isRunning {
+                capture.updateFrameRate()
+            }
+            if !MirrorUESettings.showTouches {
+                self.metalView?.cancelActiveTouch()
             }
         }
         root.addSubview(panel)
@@ -2602,8 +2676,8 @@ final class FrameView: MTKView, MTKViewDelegate {
     /// Uptime ns when the current finger went down — used to enforce a firm min hold.
     private var touchPressedAt: UInt64 = 0
     private var touchGeneration: UInt64 = 0
-    /// iOS often ignores sub-~100ms digitizer contacts; keep clicks firmer than that.
-    private static let minTouchHoldUs: UInt32 = 140_000
+    /// Ultra-responsive digitizer contact hold (25ms instead of artificial 140ms delay)
+    private static let minTouchHoldUs: UInt32 = 25_000
     var hasActiveTouch: Bool { activeTouch }
     /// Touch pretranslation mode (portrait digitizer vs buffer).
     var touchMode: TouchMap.Mode = .portrait
@@ -2640,10 +2714,9 @@ final class FrameView: MTKView, MTKViewDelegate {
 
 
     private static var captureSlotCount: Int {
-        // Six full-resolution IOSurfaces cover the triple-buffered drawable
-        // pipeline with margin while using ~80 MB instead of ~400 MB.
-        let raw = ProcessInfo.processInfo.environment["MIRRORUE_CAPTURE_SLOTS"] ?? "6"
-        return max(4, Int(raw) ?? 6)
+        // Six full-resolution IOSurfaces cover the drawable pipeline
+        let raw = ProcessInfo.processInfo.environment["MIRRORUE_CAPTURE_SLOTS"] ?? "4"
+        return max(3, Int(raw) ?? 4)
     }
 
     init(frame: CGRect, device: MTLDevice, control: ControlClient) {
@@ -2656,8 +2729,8 @@ final class FrameView: MTKView, MTKViewDelegate {
         self.enableSetNeedsDisplay = true
         self.preferredFramesPerSecond = DeviceScreenCapture.captureFPS
         if let metal = self.layer as? CAMetalLayer {
-            metal.maximumDrawableCount = 3
-            // Stay vsync'd to the Mac display — on ProMotion that is 120 Hz.
+            // Double-buffering for lowest input-to-display latency
+            metal.maximumDrawableCount = 2
             metal.displaySyncEnabled = true
         }
         self.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)

@@ -1,21 +1,21 @@
 #!/bin/bash
 # ==============================================================================
-#  MirrorUE — DMG & Release Archive Packager
+#  OmniMirror — DMG & Release Archive Packager
 # ==============================================================================
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-APP_NAME="MirrorUE"
+APP_NAME="OmniMirror"
 APP="dist/$APP_NAME.app"
 VOLUME="$APP_NAME"
-VERSION="1.2.0"
-DMG_OUT="dist/MirrorUE-${VERSION}-Intel.dmg"
-ZIP_OUT="dist/MirrorUE-v${VERSION}-macOS-Intel.zip"
+VERSION="1.0.0"
+DMG_OUT="dist/OmniMirror-${VERSION}-Intel.dmg"
+ZIP_OUT="dist/OmniMirror-v${VERSION}-macOS-Intel.zip"
 
 if [[ ! -d "$APP" ]]; then
-  echo "Error: $APP not found. Run ./install.sh first." >&2
-  exit 1
+  echo "==> $APP not found. Running ./install.sh..."
+  ./install.sh
 fi
 
 echo "==> Verifying signatures and entitlements..."

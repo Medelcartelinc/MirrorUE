@@ -77,6 +77,10 @@ public enum MirrorUESettings {
     }
 
     public static var captureFPS: Int {
+        let stored = defaults.object(forKey: Keys.captureFPS) as? Int
+        if let stored = stored, stored > 0 {
+            return stored
+        }
         if let env = ProcessInfo.processInfo.environment["MIRRORUE_CAPTURE_FPS"],
            let n = Int(env.trimmingCharacters(in: .whitespacesAndNewlines)), n > 0 {
             return min(240, max(1, n))
@@ -142,7 +146,8 @@ public enum MirrorUESettings {
 
     /// Push current prefs into the process env so existing readers keep working.
     public static func applyToEnvironment() {
-        setenv("MIRRORUE_CAPTURE_FPS", "\(captureFPS)", 1)
+        let fps = frameRate.resolvedFPS
+        setenv("MIRRORUE_CAPTURE_FPS", "\(fps)", 1)
         setenv("MIRRORUE_KB_PHONE", keyboardMode.rawValue, 1)
         switch landscapeHome {
         case .automatic:

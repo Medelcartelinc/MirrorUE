@@ -40,10 +40,9 @@ public final class DeviceScreenCapture: NSObject, @unchecked Sendable {
         output.videoSettings = [
             kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
         ]
-        // Keep every frame the DAL produces. The UI copies into its own ring, so
-        // holding them briefly here is fine and avoids gaps when the consumer
-        // hiccups for a few milliseconds.
-        output.alwaysDiscardsLateVideoFrames = false
+        // Always discard late video frames so the pipeline presents the newest real-time frame
+        // without buffer backlog or latency buildup over USB.
+        output.alwaysDiscardsLateVideoFrames = true
         output.setSampleBufferDelegate(self, queue: frameQueue)
     }
 
@@ -51,16 +50,34 @@ public final class DeviceScreenCapture: NSObject, @unchecked Sendable {
 
     /// Target CoreMediaIO frame rate (default 120). Clamped to 1…240.
     public static var captureFPS: Int {
+        let stored = UserDefaults.standard.object(forKey: "mirrorue.captureFPS") as? Int
+        if let stored = stored, stored > 0 {
+            return stored
+        }
         if let env = ProcessInfo.processInfo.environment["MIRRORUE_CAPTURE_FPS"]?
             .trimmingCharacters(in: .whitespacesAndNewlines),
            let n = Int(env), n > 0 {
             return min(240, max(1, n))
         }
-        let stored = UserDefaults.standard.object(forKey: "mirrorue.captureFPS") as? Int
-        switch stored {
-        case 60: return 60
-        case 120: return 120
-        default: return 120 // automatic
+        return 120 // automatic
+    }
+
+    public func updateFrameRate() {
+        controlQueue.async { [weak self] in
+            guard let self, self.session.isRunning else { return }
+            let targetFps = Self.captureFPS
+            if let connection = self.output.connection(with: .video) {
+                self.session.beginConfiguration()
+                let frame = CMTime(value: 1, timescale: CMTimeScale(targetFps))
+                if connection.isVideoMinFrameDurationSupported {
+                    connection.videoMinFrameDuration = frame
+                }
+                if connection.isVideoMaxFrameDurationSupported {
+                    connection.videoMaxFrameDuration = frame
+                }
+                self.session.commitConfiguration()
+                fputs("MediaKit: updated capture frame rate to \(targetFps) fps\n", stderr)
+            }
         }
     }
 

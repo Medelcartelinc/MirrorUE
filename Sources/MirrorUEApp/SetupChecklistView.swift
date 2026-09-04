@@ -6,9 +6,9 @@ final class SetupChecklistView: NSView {
     var onContinue: (() -> Void)?
 
     private let effect = NSVisualEffectView()
-    private let titleLabel = NSTextField(labelWithString: "Set up MirrorUE")
+    private let titleLabel = NSTextField(labelWithString: "Set up OmniMirror")
     private let subtitle = NSTextField(wrappingLabelWithString:
-        "MirrorUE controls a development iPhone you own and trust. Complete these steps once, then connect."
+        "OmniMirror controls an iPhone you own and trust. Complete these steps once, then connect."
     )
     private let stack = NSStackView()
     private let continueButton = NSButton(title: "Continue", target: nil, action: nil)

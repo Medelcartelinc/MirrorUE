@@ -1,8 +1,7 @@
 # Build
 .build/
 .bin/
-bin/MirrorUE
-bin/MirrorUEEngine
+bin/
 *.o
 *.dSYM/
 .swiftpm/

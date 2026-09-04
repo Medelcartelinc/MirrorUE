@@ -33,6 +33,22 @@ def main() -> int:
     conn = "USB" if args.transport == "usb" else "Network"
 
     async def run() -> None:
+        # Ensure Developer Disk Image is mounted so dtuhidd & UniversalHID are always active
+        try:
+            from pymobiledevice3.lockdown import create_using_usbmux
+            from pymobiledevice3.cli.mounter import auto_mount
+            from pymobiledevice3.exceptions import AlreadyMountedError
+            lockdown = await create_using_usbmux(serial=args.udid)
+            try:
+                await auto_mount(lockdown)
+                LOG.info("DeveloperDiskImage mounted successfully")
+            except AlreadyMountedError:
+                LOG.debug("DeveloperDiskImage already mounted")
+            except Exception as m_err:
+                LOG.warning("DeveloperDiskImage auto-mount skipped: %s", m_err)
+        except Exception as l_err:
+            LOG.warning("Lockdown mounter skipped: %s", l_err)
+
         from live_mirror import MirrorEngine, open_tunnel
 
         tunnel, rsd = await open_tunnel(args.udid, conn)

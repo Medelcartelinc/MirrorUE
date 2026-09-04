@@ -909,7 +909,7 @@ final class LocalAPIServer {
         <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-        <title>MirrorUE — Mobile Web Mirror Studio</title>
+        <title>OmniMirror — Mobile Web Mirror Studio</title>
         <style>
           :root {
             --bg-color: #090a0f;
@@ -1145,7 +1145,7 @@ final class LocalAPIServer {
         </head>
         <body>
           <header class="header" role="banner">
-            <h1 class="title"><span>📱</span> MirrorUE Web Studio</h1>
+            <h1 class="title"><span>📱</span> OmniMirror Web Studio</h1>
             <div style="display:flex;gap:6px;align-items:center;">
               <button class="codec-btn" id="btn-h264" onclick="setCodec('h264')" title="H.264 Hardware Streaming">⚡ H.264 HW</button>
               <button class="codec-btn" id="btn-jpeg" onclick="setCodec('jpeg')" title="Direct JPEG Streaming">🎨 JPEG</button>
