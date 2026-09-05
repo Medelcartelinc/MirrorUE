@@ -120,7 +120,7 @@ final class CaptureStudio {
         guard !isRecording else { return }
         let dir = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        let url = dir.appendingPathComponent("MirrorUE-\(Self.stamp()).mov")
+        let url = dir.appendingPathComponent("OmniMirror-\(Self.stamp()).mov")
         try? FileManager.default.removeItem(at: url)
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)

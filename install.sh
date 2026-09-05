@@ -40,8 +40,8 @@ echo -e "${GREEN}✓ Swift & Python3 ready${RESET}"
 
 # 2. Build binaries (UI + Engine)
 echo -e "\n${CYAN}==> Building Swift release binary (Optimized for Intel & Apple Silicon)...${RESET}"
-swift build -c release --product MirrorUE
-BIN_PATH="$(swift build -c release --show-bin-path)/MirrorUE"
+swift build -c release --product OmniMirror
+BIN_PATH="$(swift build -c release --show-bin-path)/OmniMirror"
 mkdir -p bin
 cp -f "$BIN_PATH" bin/OmniMirror
 cp -f "$BIN_PATH" bin/MirrorUE

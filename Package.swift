@@ -5,6 +5,7 @@ let package = Package(
     name: "MirrorUE",
     platforms: [.macOS(.v14)],
     products: [
+        .executable(name: "OmniMirror", targets: ["MirrorUEApp"]),
         .executable(name: "MirrorUE", targets: ["MirrorUEApp"]),
     ],
     targets: [

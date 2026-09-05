@@ -22,16 +22,9 @@ public final class DeviceScreenCapture: NSObject, @unchecked Sendable {
     private let frameQueue = DispatchQueue(label: "mirrorue-capture.frames", qos: .userInteractive)
     private let controlQueue = DispatchQueue(label: "mirrorue-capture.control", qos: .userInitiated)
     private let output = AVCaptureVideoDataOutput()
-    private let audioOutput = AVCaptureAudioPreviewOutput()
     private var currentInput: AVCaptureDeviceInput?
-    private var currentAudioInput: AVCaptureDeviceInput?
-    public var isAudioMuted: Bool {
-        get { audioOutput.volume == 0 }
-        set { audioOutput.volume = newValue ? 0 : 1.0 }
-    }
-    public func setAudioVolume(_ vol: Float) {
-        audioOutput.volume = max(0, min(1.0, vol))
-    }
+    public var isAudioMuted: Bool = false
+    public func setAudioVolume(_ vol: Float) {}
     private var stopped = false
     private var attaching = false
     private var observers: [NSObjectProtocol] = []
@@ -216,31 +209,6 @@ public final class DeviceScreenCapture: NSObject, @unchecked Sendable {
             self.currentInput = input
             if self.session.canAddOutput(self.output), !self.session.outputs.contains(self.output) {
                 self.session.addOutput(self.output)
-            }
-            if self.session.canAddOutput(self.audioOutput), !self.session.outputs.contains(self.audioOutput) {
-                self.session.addOutput(self.audioOutput)
-                self.audioOutput.volume = 1.0
-                fputs("MediaKit: audio preview connected to system output\n", stderr)
-            }
-            let hasAudioPort = input.ports.contains { $0.mediaType == .audio }
-            if !hasAudioPort {
-                let audioDiscovery = AVCaptureDevice.DiscoverySession(
-                    deviceTypes: [.external, .microphone],
-                    mediaType: .audio,
-                    position: .unspecified
-                )
-                if let iphoneAudio = audioDiscovery.devices.first(where: {
-                    $0.localizedName.localizedCaseInsensitiveContains("iPhone") ||
-                    $0.localizedName.localizedCaseInsensitiveContains(device.localizedName)
-                }) {
-                    if let oldAudio = self.currentAudioInput { self.session.removeInput(oldAudio) }
-                    if let audioIn = try? AVCaptureDeviceInput(device: iphoneAudio),
-                       self.session.canAddInput(audioIn) {
-                        self.session.addInput(audioIn)
-                        self.currentAudioInput = audioIn
-                        fputs("MediaKit: attached iPhone audio input '\(iphoneAudio.localizedName)'\n", stderr)
-                    }
-                }
             }
             // Request ProMotion-class capture (default 120). Device-level
             // activeVideoMinFrameDuration throws on this CMIO plugin — set the

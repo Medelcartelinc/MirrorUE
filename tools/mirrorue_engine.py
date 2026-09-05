@@ -46,13 +46,6 @@ def main() -> int:
                 LOG.debug("DeveloperDiskImage already mounted")
             except Exception as m_err:
                 LOG.warning("DeveloperDiskImage auto-mount skipped: %s", m_err)
-            try:
-                from pymobiledevice3.services.idam import IDAMService
-                async with IDAMService(lockdown) as idam:
-                    await idam.set_idam_configuration(True)
-                    LOG.info("IDAM digital audio streaming enabled successfully")
-            except Exception as idam_err:
-                LOG.debug("IDAM auto-enable skipped: %s", idam_err)
         except Exception as l_err:
             LOG.warning("Lockdown mounter skipped: %s", l_err)
 

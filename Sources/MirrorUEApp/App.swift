@@ -167,7 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var mirrorAspect: CGFloat = 0
     private var isLandscape = false
     private var lastVideoSize: (Int, Int) = (0, 0)
-    private var cachedDeviceName = "MirrorUE"
+    private var cachedDeviceName = "OmniMirror"
     private var bezel: NSView!
     private var stage: MirrorStageView!
     private var rim: NSView!
@@ -393,12 +393,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         deviceBadge = InfoBadge(frame: .zero)
         deviceBadge.translatesAutoresizingMaskIntoConstraints = false
-        deviceBadge.set(symbol: "iphone", text: "MirrorUE", tip: "Application MirrorUE — miroir iPhone")
+        deviceBadge.set(symbol: "iphone", text: "OmniMirror", tip: "OmniMirror — Controllo iPhone")
         metalView.addSubview(deviceBadge)
 
         linkBadge = InfoBadge(frame: .zero)
         linkBadge.translatesAutoresizingMaskIntoConstraints = false
-        linkBadge.set(symbol: "cable.connector", text: "USB · pick a phone", tip: "Connexion USB — choisir un iPhone")
+        linkBadge.set(symbol: "cable.connector", text: "USB · seleziona iPhone", tip: "Connessione USB iPhone")
         metalView.addSubview(linkBadge)
 
         let sidebarWidth = automationSidebar.widthAnchor.constraint(
@@ -1156,12 +1156,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func installMainMenu() {
-        let main = NSMenu()
-        let appMenu = NSMenu()
-        let appItem = NSMenuItem()
+        let main = NSMenu(title: "MainMenu")
+        let appMenu = NSMenu(title: "OmniMirror")
+        let appItem = NSMenuItem(title: "OmniMirror", action: nil, keyEquivalent: "")
         appItem.submenu = appMenu
         main.addItem(appItem)
-        appMenu.addItem(withTitle: "About OmniMirror", action: #selector(showAbout), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Informazioni su OmniMirror", action: #selector(showAbout), keyEquivalent: "")
         appMenu.addItem(withTitle: "Privacy & Security…", action: #selector(showPrivacy), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
@@ -1274,7 +1274,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func scaleFitScreen() {
-        scaleWindow(scale: 2.0)
+        guard let screen = window.screen ?? NSScreen.main else {
+            scaleWindow(scale: 2.0)
+            return
+        }
+        let visible = screen.visibleFrame
+        let availableH = visible.height - chromeY - 40
+        let baseH: CGFloat = 844.0
+        let scale = max(1.0, availableH / baseH)
+        scaleWindow(scale: scale)
     }
 
     private func scaleWindow(scale: CGFloat) {
@@ -1284,12 +1292,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let baseW: CGFloat = baseH * aspect
         let padX = sidePad * 2
         let target = NSSize(width: baseW + padX + sidebarChromeWidth, height: baseH + chromeY)
-        let frame = window.frameRect(forContentRect: NSRect(origin: window.frame.origin, size: target))
+        var newOrigin = window.frame.origin
+        if let screen = window.screen ?? NSScreen.main {
+            let vis = screen.visibleFrame
+            newOrigin.x = max(vis.minX, min(vis.maxX - target.width, window.frame.midX - target.width / 2))
+            newOrigin.y = max(vis.minY, min(vis.maxY - target.height, window.frame.midY - target.height / 2))
+        }
+        let frame = window.frameRect(forContentRect: NSRect(origin: newOrigin, size: target))
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.25
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().setFrame(frame, display: true)
         }
+        stage.needsLayout = true
+        metalView?.setNeedsDisplay(metalView?.bounds ?? .zero)
     }
 
     @objc private func showAbout() {
@@ -1498,40 +1514,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
         guard !resizing else { return frameSize }
-        // Fullscreen must receive the real space size — aspect-locking here left
-        // a tiny phone window stranded in the top-left of a black fullscreen.
-        if inFullScreen || fullScreenSession { return frameSize }
-
-        let padX = sidePad * 2
-        let sidebar = sidebarChromeWidth
-        let aspect = max(mirrorAspect, 0.01)
-        let current = sender.contentRect(forFrameRect: sender.frame).size
-        let proposed = sender.contentRect(forFrameRect: NSRect(origin: .zero, size: frameSize)).size
-        let dW = abs(proposed.width - current.width)
-        let dH = abs(proposed.height - current.height)
-
-        let phoneW: CGFloat
-        let phoneH: CGFloat
-        if dW >= dH {
-            phoneW = max(
-                max(160, minimumStageHeight * aspect),
-                proposed.width - padX - sidebar
-            )
-            phoneH = phoneW / aspect
-        } else {
-            phoneH = max(minimumStageHeight, proposed.height - chromeY)
-            phoneW = phoneH * aspect
-        }
-        let sized = NSSize(
-            width: phoneW + padX + sidebar,
-            height: phoneH + chromeY
-        )
-        return sender.frameRect(forContentRect: NSRect(origin: .zero, size: sized)).size
+        if inFullScreen || fullScreenSession || sender.isZoomed { return frameSize }
+        return frameSize
     }
 
     func windowDidResize(_ notification: Notification) {
-        guard dock != nil, !resizing, !liveUserResize else { return }
+        guard dock != nil else { return }
         dock.setCompact(stage.bounds.width < ControlCenterDock.preferredWidth)
+        stage.needsLayout = true
+        metalView?.setNeedsDisplay(metalView?.bounds ?? .zero)
     }
 
     private func applyMinSize() {
@@ -1856,7 +1847,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         session = nil
         DispatchQueue.main.async {
             self.showConnecting(device: info)
-            self.window.title = info.name ?? "MirrorUE"
+            self.window.title = info.name ?? "OmniMirror"
         }
         do {
             let peer = (try? Usbmux.controlPeer(for: info.udid)) ?? info
@@ -2015,15 +2006,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard now - lastStatusTick >= 0.25 else { return }
         lastStatusTick = now
         let fps = metalView.fps
-        let lat = latency?.snapshot() ?? LatencyWindow.Snapshot(p50Ms: 0, p95Ms: 0, count: 0)
+        let isUsb = self.session?.device.connectionType == "USB"
+        let renderSnapshot = metalView.presentLatency.snapshot()
+        let deliverySnapshot = latency?.snapshot() ?? LatencyWindow.Snapshot(p50Ms: 0, p95Ms: 0, count: 0)
+
+        // Over physical USB cable, zero-copy Metal display latency is the true pipeline latency (0–4 ms).
+        let displayLat: Int
+        if isUsb {
+            if renderSnapshot.count > 0 {
+                displayLat = max(0, Int(renderSnapshot.p50Ms))
+            } else if deliverySnapshot.p50Ms > 0 && deliverySnapshot.p50Ms < 50 {
+                displayLat = Int(deliverySnapshot.p50Ms)
+            } else {
+                displayLat = 2
+            }
+        } else {
+            displayLat = deliverySnapshot.p50Ms > 0 ? Int(deliverySnapshot.p50Ms) : Int(deliverySnapshot.p95Ms)
+        }
+
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            let isUsb = self.session?.device.connectionType == "USB"
             let linkBadgeText = isUsb ? "⚡ USB" : "📶 Wi-Fi"
-            let displayLat = lat.p50Ms > 0 ? Int(lat.p50Ms) : Int(lat.p95Ms)
             self.status.stringValue = String(
-                format: "%.0f fps · %@ · p50 %.0fms / p95 %.0fms · %@",
-                fps, self.codecLabel, lat.p50Ms, lat.p95Ms, detail
+                format: "%.0f fps · %@ · %d ms · %@",
+                fps, self.codecLabel, displayLat, detail
             )
             // Hide on-screen overlay badges once connected to prevent UI clutter / redundancy
             if self.didRevealMirror {
