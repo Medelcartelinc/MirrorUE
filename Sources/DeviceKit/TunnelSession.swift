@@ -12,8 +12,9 @@ public final class TunnelSession: @unchecked Sendable {
 
     public init(device: DeviceInfo, httpPort: Int = 8080) {
         self.device = device
-        self.httpPort = httpPort
-        self.controlBaseURL = URL(string: "http://127.0.0.1:\(httpPort)")!
+        let enginePort = httpPort + 1
+        self.httpPort = enginePort
+        self.controlBaseURL = URL(string: "http://127.0.0.1:\(enginePort)")!
     }
 
     public static func resolveEngine() -> URL? {
@@ -47,8 +48,8 @@ public final class TunnelSession: @unchecked Sendable {
         guard let engine = Self.resolveEngine() else {
             throw TunnelError.missingEngine
         }
-        // Only kill orphan engine daemons on httpPort+1, never kill current app PID on httpPort
-        _ = shell("lsof -tiTCP:\(httpPort + 1) -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null")
+        // Only kill orphan engine daemons on httpPort, never kill current app PID
+        _ = shell("lsof -tiTCP:\(httpPort) -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null")
 
         let transport = device.connectionType == "USB" ? "usb" : "wifi"
         let p = Process()
@@ -58,13 +59,13 @@ public final class TunnelSession: @unchecked Sendable {
             p.arguments = [engine.path,
                            "--udid", device.udid,
                            "--transport", transport,
-                           "--http-port", "\(httpPort + 1)"]
+                           "--http-port", "\(httpPort)"]
         } else {
             p.executableURL = engine
             p.arguments = [
                 "--udid", device.udid,
                 "--transport", transport,
-                "--http-port", "\(httpPort + 1)",
+                "--http-port", "\(httpPort)",
             ]
         }
         var env = ProcessInfo.processInfo.environment
@@ -104,7 +105,7 @@ public final class TunnelSession: @unchecked Sendable {
             do {
                 let (_, resp) = try await URLSession.shared.data(from: url)
                 if let http = resp as? HTTPURLResponse, http.statusCode == 200 {
-                    rsdSession = await CoreDeviceBridge.waitForSession(timeout: 5)
+                    rsdSession = await CoreDeviceBridge.waitForSession(timeout: 10)
                     return
                 }
             } catch {}

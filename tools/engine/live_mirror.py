@@ -35,6 +35,7 @@ BUTTONS = {
 }
 
 USE_NATIVE = os.environ.get("MIRRORUE_NATIVE", "").strip() in ("1", "true", "yes", "on")
+ENABLE_COREDEVICE_VIDEO = os.environ.get("MIRRORUE_ENABLE_COREDEVICE_VIDEO", "").strip() in ("1", "true", "yes", "on")
 VIDEO_TRANSPORT = "unix"
 APP_CATALOG_TTL_SECONDS = 300.0
 MAX_OPEN_APP_BODY_BYTES = 4_096
@@ -990,41 +991,49 @@ class MirrorEngine:
 
 
 async def _mirror_engine_run(self) -> None:
-    from pymobiledevice3.remote.core_device.display_service import DisplayService
-    from pymobiledevice3.remote.core_device.screen_stream import open_media_receiver
+    transport = None
+    if ENABLE_COREDEVICE_VIDEO:
+        from pymobiledevice3.remote.core_device.display_service import DisplayService
+        from pymobiledevice3.remote.core_device.screen_stream import open_media_receiver
 
-    svc = DisplayService(self._rsd)
-    await svc.connect()
-    transport, receiver_ip = open_media_receiver(svc, (8 * 1024 * 1024, 4 * 1024 * 1024))
-    sid = uuid.uuid4()
-    answer = await svc.start_video_stream(
-        receiver_ip=receiver_ip,
-        receiver_port=transport.port,
-        sender_ip=self._vnc._sender_ip,
-        display_id=1,
-        client_session_id=sid,
-        allow_rtcp_fb=True,
-        ltrp_enabled=False,
-    )
-    cfg = answer["connection"].get("streamConfig", {})
-    source_port = int(cfg.get("SourcePort", 0))
-    self._vnc._local_ssrc = int(cfg.get("RemoteSSRC", 0))
-    self._vnc._remote_ssrc = int(cfg.get("LocalSSRC", 0))
-    self._vnc._rtcp_dest = (self._vnc._sender_ip, source_port) if source_port else None
-    self._vnc._active_transport = transport
-    loop = asyncio.get_running_loop()
-    self._vnc._loop = loop
-    LOG.info(
-        "live video up: %dx%d HEVC → VT BGRA",
-        int(cfg.get("CustomWidth", 0)),
-        int(cfg.get("CustomHeight", 0)),
-    )
-    self._tasks = [
-        asyncio.create_task(self._vnc._udp_recv_and_pipe(transport)),
-        asyncio.create_task(self._vnc._decoder_refresh_loop()),
-        asyncio.create_task(self._vnc._rtcp_send_loop(transport)),
-        asyncio.create_task(self._foreground_monitor_loop(), name="foreground-monitor"),
-    ]
+        svc = DisplayService(self._rsd)
+        await svc.connect()
+        transport, receiver_ip = open_media_receiver(svc, (8 * 1024 * 1024, 4 * 1024 * 1024))
+        sid = uuid.uuid4()
+        answer = await svc.start_video_stream(
+            receiver_ip=receiver_ip,
+            receiver_port=transport.port,
+            sender_ip=self._vnc._sender_ip,
+            display_id=1,
+            client_session_id=sid,
+            allow_rtcp_fb=True,
+            ltrp_enabled=False,
+        )
+        cfg = answer["connection"].get("streamConfig", {})
+        source_port = int(cfg.get("SourcePort", 0))
+        self._vnc._local_ssrc = int(cfg.get("RemoteSSRC", 0))
+        self._vnc._remote_ssrc = int(cfg.get("LocalSSRC", 0))
+        self._vnc._rtcp_dest = (self._vnc._sender_ip, source_port) if source_port else None
+        self._vnc._active_transport = transport
+        loop = asyncio.get_running_loop()
+        self._vnc._loop = loop
+        LOG.info(
+            "live video up: %dx%d HEVC → VT BGRA",
+            int(cfg.get("CustomWidth", 0)),
+            int(cfg.get("CustomHeight", 0)),
+        )
+        self._tasks = [
+            asyncio.create_task(self._vnc._udp_recv_and_pipe(transport)),
+            asyncio.create_task(self._vnc._decoder_refresh_loop()),
+            asyncio.create_task(self._vnc._rtcp_send_loop(transport)),
+            asyncio.create_task(self._foreground_monitor_loop(), name="foreground-monitor"),
+        ]
+    else:
+        LOG.info("DisplayService video stream disabled (using native CoreMediaIO 120 FPS)")
+        self._tasks = [
+            asyncio.create_task(self._foreground_monitor_loop(), name="foreground-monitor"),
+        ]
+
     self._write_rsd_meta(transport)
     hid = HidSocketServer()
     hid.bind(
@@ -1060,8 +1069,9 @@ async def _mirror_engine_run(self) -> None:
         with contextlib.suppress(Exception):
             await asyncio.gather(*self._tasks, return_exceptions=True)
         await self._vnc._stop_hid()
-        with contextlib.suppress(Exception):
-            transport.close()
+        if transport is not None:
+            with contextlib.suppress(Exception):
+                transport.close()
 
 
 MirrorEngine.run = _mirror_engine_run  # type: ignore[method-assign]

@@ -1917,6 +1917,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if let rsd = session.rsdSession {
                 control.hidSocketPath = rsd.hidSocketPath
                 startVideo(rsd)
+            } else if let fallback = CoreDeviceBridge.loadSession() {
+                control.hidSocketPath = fallback.hidSocketPath
+                startVideo(fallback)
             } else {
                 startVideo(nil)
             }

@@ -72,6 +72,8 @@ public final class ControlClient: @unchecked Sendable {
         cfg.timeoutIntervalForRequest = 2
         cfg.httpMaximumConnectionsPerHost = 8
         self.session = URLSession(configuration: cfg)
+        self.hidSocketPath = "/tmp/mirrorue_hid.sock"
+        self.hid = HidSocketClient(path: "/tmp/mirrorue_hid.sock")
     }
 
     public func button(_ name: String, state: String = "press") {
