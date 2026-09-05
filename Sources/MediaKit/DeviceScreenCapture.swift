@@ -110,19 +110,16 @@ public final class DeviceScreenCapture: NSObject, @unchecked Sendable {
         }
 
         let center = NotificationCenter.default
-        for name in [AVCaptureDevice.wasConnectedNotification,
-                     AVCaptureDevice.wasDisconnectedNotification,
-                     AVCaptureSession.runtimeErrorNotification] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: nil) {
-                [weak self] note in
-                if name == AVCaptureDevice.wasConnectedNotification {
-                    self?.attach(force: true)
-                } else {
-                    self?.attach(force: name == AVCaptureSession.runtimeErrorNotification)
-                }
-                _ = note
-            })
-        }
+        observers.append(center.addObserver(forName: AVCaptureDevice.wasConnectedNotification, object: nil, queue: nil) { [weak self] _ in
+            self?.attach(force: true)
+        })
+        observers.append(center.addObserver(forName: AVCaptureDevice.wasDisconnectedNotification, object: nil, queue: nil) { [weak self] _ in
+            self?.attach(force: false)
+        })
+        observers.append(center.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: nil, queue: nil) { [weak self] note in
+            let error = note.userInfo?[AVCaptureSessionErrorKey] as? NSError
+            self?.handleRuntimeError(error)
+        })
 
         let timer = DispatchSource.makeTimerSource(queue: controlQueue)
         timer.schedule(deadline: .now() + 2, repeating: 2)
@@ -168,6 +165,36 @@ public final class DeviceScreenCapture: NSObject, @unchecked Sendable {
         watchdog?.cancel()
     }
 
+    private func handleRuntimeError(_ error: NSError?) {
+        controlQueue.async { [weak self] in
+            guard let self, !self.stopped else { return }
+            let code = error?.code ?? 0
+            fputs("MediaKit: session runtime error (\(code)): \(String(describing: error))\n", stderr)
+
+            // When media/audio routes change on iOS (e.g. Spotify or audio playback starting),
+            // AVFoundation posts Code=-11808 (recording stopped) or -11819 (media reset).
+            // Do NOT discard the device or tear down the input: pause briefly and resume startRunning()!
+            if code == -11808 || code == -11819 {
+                fputs("MediaKit: audio route change or transient stop (-11808) — restarting session in 200ms\n", stderr)
+                Thread.sleep(forTimeInterval: 0.20)
+                if self.currentInput?.device.isConnected == true {
+                    if !self.session.isRunning {
+                        self.session.startRunning()
+                    }
+                    if self.session.isRunning {
+                        fputs("MediaKit: session recovered and running after audio route change!\n", stderr)
+                        self.frameClock.lock()
+                        self.lastFrameNs = monotonicNow()
+                        self.frameClock.unlock()
+                        return
+                    }
+                }
+            }
+            // If resume failed or device disconnected, reattach fully
+            self.attach(force: true)
+        }
+    }
+
     private func attach(force: Bool) {
         controlQueue.async { [weak self] in
             guard let self, !self.stopped, !self.attaching else { return }
@@ -179,10 +206,8 @@ public final class DeviceScreenCapture: NSObject, @unchecked Sendable {
             if self.session.isRunning { self.session.stopRunning() }
             Self.allowScreenCaptureDevices()
 
-            // One short poll only — the watchdog re-enters every 2s. Blocking
-            // here for minutes made the control queue look wedged and delayed
-            // every reconnect.
-            guard let device = Self.findScreenDevice(attempts: 15) else {
+            // Wait up to 2.5s (25 attempts * 0.1s) for device re-enumeration
+            guard let device = Self.findScreenDevice(attempts: 25) else {
                 Self.debugDevices("waiting")
                 return
             }
@@ -280,24 +305,15 @@ public final class DeviceScreenCapture: NSObject, @unchecked Sendable {
     private static func findScreenDevice(attempts: Int) -> AVCaptureDevice? {
         allowScreenCaptureDevices()
         for _ in 0..<attempts {
-            // Give the main run loop a turn so the DAL can publish. Without this
-            // the DiscoverySession keeps returning Continuity Camera only.
-            // Never main.sync from the main thread — that deadlocks.
-            let pump: () -> Void = {
-                _ = RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
-            }
-            if Thread.isMainThread {
-                pump()
-            } else {
-                DispatchQueue.main.sync(execute: pump)
-            }
             let discovery = AVCaptureDevice.DiscoverySession(
                 deviceTypes: [.external], mediaType: nil, position: .unspecified
             )
-            if let found = discovery.devices.first(where: { $0.hasMediaType(.muxed) }) {
+            if let found = discovery.devices.first(where: {
+                $0.hasMediaType(.muxed) || ($0.hasMediaType(.video) && $0.localizedName.localizedCaseInsensitiveContains("iPhone"))
+            }) {
                 return found
             }
-            Thread.sleep(forTimeInterval: 0.05)
+            Thread.sleep(forTimeInterval: 0.1)
         }
         return nil
     }

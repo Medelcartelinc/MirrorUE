@@ -20,7 +20,14 @@ fi
 
 echo "==> Verifying signatures and entitlements..."
 xattr -cr "$APP"
-codesign --force --deep --sign - --entitlements "$ROOT/MirrorUE.entitlements" "$APP"
+security unlock-keychain -p omnibar-signing "$HOME/Library/Keychains/omnibar-signing.keychain-db" 2>/dev/null || true
+if security find-certificate -c "OmniBar Signing" >/dev/null 2>&1; then
+  codesign --force --deep --sign "OmniBar Signing" --entitlements "$ROOT/MirrorUE.entitlements" "$APP"
+  echo "✓ Signed with OmniBar Signing"
+else
+  codesign --force --deep --sign - --entitlements "$ROOT/MirrorUE.entitlements" "$APP"
+  echo "✓ Signed ad-hoc"
+fi
 codesign --verify --deep --strict "$APP"
 
 echo "==> Staging DMG..."

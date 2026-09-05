@@ -20,11 +20,17 @@ from video_socket import SHM_PATH, VIDEO_PATH, VideoSocketPublisher
 LOG = logging.getLogger("mirrorue.live")
 
 BUTTONS = {
-    "home": (0x0C, 0x40, 0.05),
+    "home": (0x0C, 0x40, 0.06),
     "lock": (0x0C, 0x30, 0.5),
-    "volume-up": (0x0C, 0xE9, 0.05),
-    "volume-down": (0x0C, 0xEA, 0.05),
-    "mute": (0x0C, 0xE2, 0.05),
+    "volume-up": (0x0C, 0xE9, 0.06),
+    "volume_up": (0x0C, 0xE9, 0.06),
+    "vol_up": (0x0C, 0xE9, 0.06),
+    "volup": (0x0C, 0xE9, 0.06),
+    "volume-down": (0x0C, 0xEA, 0.06),
+    "volume_down": (0x0C, 0xEA, 0.06),
+    "vol_down": (0x0C, 0xEA, 0.06),
+    "voldown": (0x0C, 0xEA, 0.06),
+    "mute": (0x0C, 0xE2, 0.06),
     "siri": (0x0C, 0xCF, 1.0),
 }
 
@@ -860,16 +866,22 @@ class MirrorEngine:
     async def _button(self, name: str, state: str) -> None:
         from pymobiledevice3.remote.core_device.hid_service import HID_BUTTON_STATE_DOWN, HID_BUTTON_STATE_UP
 
-        spec = BUTTONS.get(name)
+        key = name.lower().replace(" ", "-")
+        spec = BUTTONS.get(key)
         if not spec:
             return
-        page, code, _ = spec
-        st = HID_BUTTON_STATE_DOWN if state == "press" else HID_BUTTON_STATE_UP
+        page, code, hold = spec
 
         async def once() -> None:
             await self._vnc._ensure_indigo()
             assert self._vnc._indigo is not None
-            await self._vnc._indigo.send_button(page, code, st)
+            if state == "press":
+                await self._vnc._indigo.send_button(page, code, HID_BUTTON_STATE_DOWN)
+                await asyncio.sleep(hold)
+                await self._vnc._indigo.send_button(page, code, HID_BUTTON_STATE_UP)
+            else:
+                st = HID_BUTTON_STATE_DOWN if state in ("down", "press") else HID_BUTTON_STATE_UP
+                await self._vnc._indigo.send_button(page, code, st)
 
         await self._run_hid(f"button:{name}", once)
 

@@ -1235,6 +1235,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         toggleSb.keyEquivalentModifierMask = [.command]
         viewMenu.addItem(toggleSb)
 
+        // ── iPhone Controls Menu ────────────────────────────────────────────
+        let iphoneMenu = NSMenu(title: "iPhone")
+        let iphoneMenuItem = NSMenuItem(title: "iPhone", action: nil, keyEquivalent: "")
+        iphoneMenuItem.submenu = iphoneMenu
+        main.addItem(iphoneMenuItem)
+
+        let homeItem = NSMenuItem(title: "Schermata Home", action: #selector(triggerHome), keyEquivalent: "h")
+        homeItem.keyEquivalentModifierMask = [.command]
+        iphoneMenu.addItem(homeItem)
+
+        let appSwitcherItem = NSMenuItem(title: "App Switcher (Multitasking)", action: #selector(triggerAppSwitcher), keyEquivalent: "a")
+        appSwitcherItem.keyEquivalentModifierMask = [.command, .shift]
+        iphoneMenu.addItem(appSwitcherItem)
+
+        let lockItem = NSMenuItem(title: "Blocca Schermo", action: #selector(triggerLock), keyEquivalent: "l")
+        lockItem.keyEquivalentModifierMask = [.command]
+        iphoneMenu.addItem(lockItem)
+
+        iphoneMenu.addItem(NSMenuItem.separator())
+
+        let volUpItem = NSMenuItem(title: "Volume +", action: #selector(triggerVolumeUp), keyEquivalent: "=")
+        volUpItem.keyEquivalentModifierMask = [.command]
+        iphoneMenu.addItem(volUpItem)
+
+        let volDownItem = NSMenuItem(title: "Volume −", action: #selector(triggerVolumeDown), keyEquivalent: "-")
+        volDownItem.keyEquivalentModifierMask = [.command]
+        iphoneMenu.addItem(volDownItem)
+
         // ── Window Menu ─────────────────────────────────────────────────────
         let windowMenu = NSMenu(title: "Window")
         let windowItem = NSMenuItem(title: "Window", action: nil, keyEquivalent: "")
@@ -2088,9 +2116,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         switch id {
         case "apps":
-            control.appsSwitcher()
+            triggerAppSwitcher()
+        case "home":
+            triggerHome()
+        case "lock":
+            triggerLock()
+        case "volume-up", "vol_up", "volup":
+            triggerVolumeUp()
+        case "volume-down", "vol_down", "voldown":
+            triggerVolumeDown()
         case "cc":
             control.controlCenter()
+            status.stringValue = "centro di controllo"
         case "music":
             musicSafe.toggle()
             control.musicSafe(musicSafe)
@@ -2123,6 +2160,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         default:
             control.button(id)
         }
+    }
+
+    @objc func triggerVolumeUp() {
+        control.button("volume-up")
+        status.stringValue = "volume +"
+    }
+
+    @objc func triggerVolumeDown() {
+        control.button("volume-down")
+        status.stringValue = "volume −"
+    }
+
+    @objc func triggerAppSwitcher() {
+        control.appsSwitcher()
+        status.stringValue = "app switcher"
+    }
+
+    @objc func triggerHome() {
+        control.button("home")
+        status.stringValue = "schermata home"
+    }
+
+    @objc func triggerLock() {
+        control.button("lock")
+        status.stringValue = "blocco schermo"
     }
 
     private func wireWorkflowSidebar() {

@@ -76,16 +76,23 @@ public final class ControlClient: @unchecked Sendable {
 
     public func button(_ name: String, state: String = "press") {
         if let hid, hid.isAvailable {
-            hid.button(name, state: state)
-            // Press alone leaves Indigo buttons stuck; click = press + release.
             if state == "press" {
-                hid.button(name, state: "release")
+                hid.button(name, state: "press")
+                DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + 0.065) { [weak hid] in
+                    hid?.button(name, state: "release")
+                }
+            } else {
+                hid.button(name, state: state)
             }
             return
         }
-        post("/button", ["name": name, "state": state])
         if state == "press" {
-            post("/button", ["name": name, "state": "release"])
+            post("/button", ["name": name, "state": "press"])
+            DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + 0.065) { [weak self] in
+                self?.post("/button", ["name": name, "state": "release"])
+            }
+        } else {
+            post("/button", ["name": name, "state": state])
         }
     }
 
@@ -218,18 +225,33 @@ public final class ControlClient: @unchecked Sendable {
         )
     }
 
-    public func appsSwitcher() { swipeUp() }
+    public func appsSwitcher() {
+        // App Switcher on modern gesture iPhones: drag up from bottom and pause in center for ~300ms.
+        var path: [(String, Int, Int)] = [
+            ("contact", 32768, 64500),
+            ("contact", 32768, 58000),
+            ("contact", 32768, 50000),
+            ("contact", 32768, 44000),
+            ("contact", 32768, 38000),
+        ]
+        // Hold contact at center for 300ms (10 frames at 30ms each)
+        for _ in 0..<10 {
+            path.append(("contact", 32768, 38000))
+        }
+        path.append(("release", 32768, 38000))
+        fireTouchPath(path, stepDelay: 0.03)
+    }
+
     public func controlCenter() { swipeDown() }
 
     public func swipeUp() {
         fireTouchPath([
-            ("contact", 32768, 64000),
-            ("contact", 32768, 52000),
-            ("contact", 32768, 40000),
-            ("contact", 32768, 28000),
-            ("contact", 32768, 16000),
-            ("release", 32768, 8000),
-        ])
+            ("contact", 32768, 64500),
+            ("contact", 32768, 50000),
+            ("contact", 32768, 35000),
+            ("contact", 32768, 20000),
+            ("release", 32768, 10000),
+        ], stepDelay: 0.02)
     }
 
     public func swipeDown() {
@@ -240,12 +262,12 @@ public final class ControlClient: @unchecked Sendable {
             ("contact", 50000, 30000),
             ("contact", 50000, 42000),
             ("release", 50000, 48000),
-        ])
+        ], stepDelay: 0.02)
     }
 
-    private func fireTouchPath(_ path: [(String, Int, Int)]) {
+    private func fireTouchPath(_ path: [(String, Int, Int)], stepDelay: Double = 0.02) {
         for (i, step) in path.enumerated() {
-            DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + Double(i) * 0.02) {
+            DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + Double(i) * stepDelay) {
                 self.touch(type: step.0, x: step.1, y: step.2)
             }
         }
