@@ -28,6 +28,9 @@ public struct DeviceInfo: Sendable, Equatable {
         let model = productType ?? "unknown"
         return "\(name) (\(model))"
     }
+
+    public var isUSB: Bool { connectionType == "USB" }
+    public var isNetwork: Bool { connectionType == "Network" }
 }
 
 public enum DeviceKitError: Error, CustomStringConvertible {
@@ -109,23 +112,38 @@ public enum Usbmux {
         try listDevices().filter { $0.connectionType == "USB" }
     }
 
-    public static func pick(udid: String? = nil) throws -> DeviceInfo {
-        let usb = try usbDevices()
+    /// Wi-Fi (Network) paired phones.
+    public static func networkDevices() throws -> [DeviceInfo] {
+        try listDevices().filter { $0.connectionType == "Network" }
+    }
+
+    public static func pick(udid: String? = nil, preferUSB: Bool = true) throws -> DeviceInfo {
+        let all = try listDevices()
         if let udid {
-            if let d = usb.first(where: { $0.udid == udid }) { return d }
+            if preferUSB {
+                if let d = all.first(where: { $0.udid == udid && $0.connectionType == "USB" }) { return d }
+            }
+            if let d = all.first(where: { $0.udid == udid }) { return d }
             throw DeviceKitError.noDevice
         }
-        if let d = usb.first { return d }
+        if preferUSB {
+            if let d = all.first(where: { $0.connectionType == "USB" }) { return d }
+        }
+        if let d = all.first { return d }
         throw DeviceKitError.noDevice
     }
 
     /// Peer used for the CoreDevice control tunnel.
-    /// Prefer Network for the same UDID so USB stays free for the system
-    /// screen-capture device (QuickTime / “iPhone Mirroring” DAL).
-    public static func controlPeer(for udid: String) throws -> DeviceInfo {
+    /// Prefers USB so the physical cable is used whenever plugged in.
+    public static func controlPeer(for udid: String, preferUSB: Bool = true) throws -> DeviceInfo {
         let all = try listDevices().filter { $0.udid == udid }
-        if let net = all.first(where: { $0.connectionType == "Network" }) { return net }
-        if let usb = all.first(where: { $0.connectionType == "USB" }) { return usb }
+        if preferUSB {
+            if let usb = all.first(where: { $0.connectionType == "USB" }) { return usb }
+            if let net = all.first(where: { $0.connectionType == "Network" }) { return net }
+        } else {
+            if let net = all.first(where: { $0.connectionType == "Network" }) { return net }
+            if let usb = all.first(where: { $0.connectionType == "USB" }) { return usb }
+        }
         throw DeviceKitError.noDevice
     }
 

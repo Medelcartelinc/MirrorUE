@@ -1749,7 +1749,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.contentView?.addSubview(view)
         picker = view
         applyConnectionState(.pickingDevice)
-        deviceBadge.set(symbol: "iphone", text: "MirrorUE")
+        deviceBadge.set(symbol: "iphone", text: "OmniMirror")
     }
 
     private func showConnecting(device: DeviceInfo) {
@@ -1850,22 +1850,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self.window.title = info.name ?? "OmniMirror"
         }
         do {
-            let peer = (try? Usbmux.controlPeer(for: info.udid)) ?? info
-            let link = peer.connectionType == "USB" ? "USB tunnel" : "Wi‑Fi tunnel"
+            let preferUSB = info.connectionType == "USB" || MirrorUESettings.transportMode != .wifi
+            let peer: DeviceInfo
+            if let resolved = try? Usbmux.controlPeer(for: info.udid, preferUSB: preferUSB) {
+                if info.connectionType == "Network" && MirrorUESettings.transportMode == .wifi {
+                    let all = (try? Usbmux.listDevices()) ?? []
+                    peer = all.first { $0.udid == info.udid && $0.connectionType == "Network" } ?? resolved
+                } else {
+                    peer = resolved
+                }
+            } else {
+                peer = info
+            }
+            let isUSB = peer.connectionType == "USB"
+            let link = isUSB ? "⚡ Cavo USB" : "📶 Wi‑Fi"
             DispatchQueue.main.async {
                 self.applyConnectionState(.openingTunnel(link: link))
+                self.linkBadge.set(
+                    symbol: isUSB ? "bolt.horizontal.fill" : "wifi",
+                    text: link,
+                    tip: isUSB ? "Latenza ultra-bassa (0–3 ms) via USB" : "Connessione senza fili Wi-Fi"
+                )
             }
             let session = TunnelSession(device: peer, httpPort: args.httpPort)
             try session.start()
             session.onProcessExit = { [weak self] code in
                 guard let self, self.didRevealMirror else { return }
-                fputs("MirrorUE: engine exited (\(code)) — recovering\n", stderr)
+                fputs("OmniMirror: engine exited (\(code)) — recovering\n", stderr)
                 self.handleEngineDeath(code: code)
             }
             self.session = session
             self.control.baseURL = session.controlBaseURL
             try await session.waitUntilReady()
-            let hidLink = peer.connectionType == "USB" ? "USB · HID" : "Wi‑Fi · HID"
+            let hidLink = isUSB ? "⚡ USB · HID" : "📶 Wi‑Fi · HID"
             DispatchQueue.main.async {
                 self.applyConnectionState(.attachingHID(link: hidLink))
             }

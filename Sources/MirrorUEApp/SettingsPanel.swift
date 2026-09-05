@@ -7,6 +7,7 @@ final class SettingsPanel: NSView {
     var onApply: (() -> Void)?
 
     private let effect = NSVisualEffectView()
+    private let transportPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let fpsPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let kbPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let landPopup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -41,6 +42,7 @@ final class SettingsPanel: NSView {
         form.spacing = 14
         form.translatesAutoresizingMaskIntoConstraints = false
 
+        form.addArrangedSubview(labeled("Modalità connessione", control: transportPopup))
         form.addArrangedSubview(labeled("Frame rate", control: fpsPopup))
         form.addArrangedSubview(labeled("iPhone keyboard", control: kbPopup))
         form.addArrangedSubview(labeled("Landscape touch", control: landPopup))
@@ -51,6 +53,10 @@ final class SettingsPanel: NSView {
         self.touchesCheck = touches
         form.addArrangedSubview(touches)
 
+        for mode in MirrorUESettings.TransportMode.allCases {
+            transportPopup.addItem(withTitle: mode.title)
+            transportPopup.lastItem?.representedObject = mode.rawValue
+        }
         for mode in MirrorUESettings.FrameRate.allCases {
             fpsPopup.addItem(withTitle: mode.title)
             fpsPopup.lastItem?.representedObject = mode.rawValue
@@ -64,6 +70,7 @@ final class SettingsPanel: NSView {
             landPopup.lastItem?.representedObject = mode.rawValue
         }
 
+        select(transportPopup, value: MirrorUESettings.transportMode.rawValue)
         select(fpsPopup, value: MirrorUESettings.frameRate.rawValue)
         select(kbPopup, value: MirrorUESettings.keyboardMode.rawValue)
         select(landPopup, value: MirrorUESettings.landscapeHome.rawValue)
@@ -150,6 +157,10 @@ final class SettingsPanel: NSView {
     }
 
     @objc private func doneClicked() {
+        if let raw = transportPopup.selectedItem?.representedObject as? String,
+           let mode = MirrorUESettings.TransportMode(rawValue: raw) {
+            MirrorUESettings.transportMode = mode
+        }
         if let raw = fpsPopup.selectedItem?.representedObject as? Int,
            let mode = MirrorUESettings.FrameRate(rawValue: raw) {
             MirrorUESettings.frameRate = mode

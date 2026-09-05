@@ -11,6 +11,21 @@ public enum MirrorUESettings {
         public static let setupSeen = "mirrorue.setupChecklistSeen"
         public static let permissionsGate = "mirrorue.permissionsGateCompleted"
         public static let showTouches = "mirrorue.showTouches"
+        public static let transportMode = "mirrorue.transportMode"
+    }
+
+    public enum TransportMode: String, CaseIterable {
+        case auto = "auto"
+        case usb = "usb"
+        case wifi = "wifi"
+
+        public var title: String {
+            switch self {
+            case .auto: return "Automatico (preferisci Cavo USB)"
+            case .usb: return "Solo Cavo USB (0–3 ms)"
+            case .wifi: return "Solo Wi‑Fi"
+            }
+        }
     }
 
     public enum KeyboardMode: String, CaseIterable {
@@ -74,6 +89,14 @@ public enum MirrorUESettings {
             return FrameRate(rawValue: raw ?? 0) ?? .automatic
         }
         set { defaults.set(newValue.rawValue, forKey: Keys.captureFPS) }
+    }
+
+    public static var transportMode: TransportMode {
+        get {
+            let raw = defaults.string(forKey: Keys.transportMode) ?? TransportMode.auto.rawValue
+            return TransportMode(rawValue: raw) ?? .auto
+        }
+        set { defaults.set(newValue.rawValue, forKey: Keys.transportMode) }
     }
 
     public static var captureFPS: Int {

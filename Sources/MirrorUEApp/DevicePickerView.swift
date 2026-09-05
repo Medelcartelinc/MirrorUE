@@ -1,24 +1,34 @@
 import AppKit
+import ControlKit
 import DeviceKit
 
-/// Startup panel: list USB iPhones and let the user pick one.
+/// Startup panel: list USB or Wi-Fi iPhones and let the user pick one.
 final class DevicePickerView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     var onSelect: ((DeviceInfo) -> Void)?
 
     private let effect = NSVisualEffectView()
     private let titleIcon = NSImageView()
-    private let titleLabel = NSTextField(labelWithString: "Select iPhone")
+    private let titleLabel = NSTextField(labelWithString: "Connessione iPhone")
     private let hintLabel = NSTextField(wrappingLabelWithString:
-        "Connect a trusted USB cable, unlock the phone, then choose a device.")
+        "Scegli la modalità di connessione e seleziona il tuo iPhone per avviare il mirroring.")
+    private let transportSegment = NSSegmentedControl()
+
+    private let noticeBox = NSView()
+    private let noticeIcon = NSImageView()
+    private let noticeLabel = NSTextField(wrappingLabelWithString: "")
+    private let noticeActionButton = NSButton()
+
     private let scroll = NSScrollView()
     private let table = NSTableView()
     private let refreshButton = NSButton()
     private let connectButton = NSButton()
     private let emptyLabel = NSTextField(wrappingLabelWithString:
-        "No USB iPhone found — plug in, unlock, and tap Trust This Mac on the phone.")
+        "Nessun iPhone trovato — collega il cavo USB o assicurati che l'iPhone sia sulla stessa rete Wi-Fi.")
 
     private var devices: [DeviceInfo] = []
+    private var allDetectedDevices: [DeviceInfo] = []
     private var pollTimer: Timer?
+    private var noticeHeightConstraint: NSLayoutConstraint?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -67,15 +77,87 @@ final class DevicePickerView: NSView, NSTableViewDataSource, NSTableViewDelegate
         hintLabel.setContentCompressionResistancePriority(.required, for: .vertical)
         hintLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        emptyLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        // Transport segmented control
+        transportSegment.segmentCount = 3
+        transportSegment.setLabel("⚡ Cavo USB", forSegment: 0)
+        transportSegment.setLabel("📶 Wi-Fi", forSegment: 1)
+        transportSegment.setLabel("🔄 Tutti", forSegment: 2)
+        transportSegment.setToolTip("Latenza ultra-bassa (0–3 ms) via cavo USB", forSegment: 0)
+        transportSegment.setToolTip("Connessione senza fili su rete locale", forSegment: 1)
+        transportSegment.setToolTip("Mostra tutti i dispositivi USB e Wi-Fi", forSegment: 2)
+        transportSegment.segmentStyle = .texturedRounded
+        transportSegment.trackingMode = .selectOne
+        switch MirrorUESettings.transportMode {
+        case .usb:
+            transportSegment.selectedSegment = 0
+        case .wifi:
+            transportSegment.selectedSegment = 1
+        case .auto:
+            transportSegment.selectedSegment = 0
+        }
+        transportSegment.target = self
+        transportSegment.action = #selector(transportSegmentChanged(_:))
+        transportSegment.translatesAutoresizingMaskIntoConstraints = false
+
+        // Notice Box (shown if USB is selected but only Wi-Fi iPhone is present)
+        noticeBox.wantsLayer = true
+        noticeBox.layer?.cornerRadius = 10
+        noticeBox.layer?.cornerCurve = .continuous
+        noticeBox.layer?.backgroundColor = NSColor.systemOrange.withAlphaComponent(0.12).cgColor
+        noticeBox.layer?.borderWidth = 1
+        noticeBox.layer?.borderColor = NSColor.systemOrange.withAlphaComponent(0.35).cgColor
+        noticeBox.isHidden = true
+        noticeBox.translatesAutoresizingMaskIntoConstraints = false
+
+        noticeIcon.image = sfSymbol("exclamationmark.triangle.fill", size: 16)
+        noticeIcon.contentTintColor = .systemOrange
+        noticeIcon.translatesAutoresizingMaskIntoConstraints = false
+
+        noticeLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        noticeLabel.textColor = .labelColor
+        noticeLabel.lineBreakMode = .byWordWrapping
+        noticeLabel.maximumNumberOfLines = 0
+        noticeLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        noticeActionButton.title = "Usa Wi-Fi"
+        noticeActionButton.image = sfSymbol("wifi", size: 12)
+        noticeActionButton.imagePosition = .imageLeading
+        noticeActionButton.font = .systemFont(ofSize: 11, weight: .semibold)
+        noticeActionButton.bezelStyle = .rounded
+        noticeActionButton.target = self
+        noticeActionButton.action = #selector(switchToWifiClicked)
+        noticeActionButton.translatesAutoresizingMaskIntoConstraints = false
+
+        noticeBox.addSubview(noticeIcon)
+        noticeBox.addSubview(noticeLabel)
+        noticeBox.addSubview(noticeActionButton)
+
+        NSLayoutConstraint.activate([
+            noticeIcon.leadingAnchor.constraint(equalTo: noticeBox.leadingAnchor, constant: 10),
+            noticeIcon.topAnchor.constraint(equalTo: noticeBox.topAnchor, constant: 10),
+            noticeIcon.widthAnchor.constraint(equalToConstant: 18),
+            noticeIcon.heightAnchor.constraint(equalToConstant: 18),
+
+            noticeLabel.leadingAnchor.constraint(equalTo: noticeIcon.trailingAnchor, constant: 8),
+            noticeLabel.topAnchor.constraint(equalTo: noticeBox.topAnchor, constant: 8),
+            noticeLabel.bottomAnchor.constraint(equalTo: noticeBox.bottomAnchor, constant: -8),
+            noticeLabel.trailingAnchor.constraint(equalTo: noticeActionButton.leadingAnchor, constant: -8),
+
+            noticeActionButton.trailingAnchor.constraint(equalTo: noticeBox.trailingAnchor, constant: -10),
+            noticeActionButton.centerYAnchor.constraint(equalTo: noticeBox.centerYAnchor),
+            noticeActionButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
+        ])
+
+        emptyLabel.font = .systemFont(ofSize: 12, weight: .medium)
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center
+        emptyLabel.lineBreakMode = .byWordWrapping
         emptyLabel.isHidden = true
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
 
         table.style = .plain
         table.headerView = nil
-        table.rowHeight = 56
+        table.rowHeight = 60
         table.intercellSpacing = NSSize(width: 0, height: 6)
         table.backgroundColor = .clear
         table.selectionHighlightStyle = .regular
@@ -96,14 +178,14 @@ final class DevicePickerView: NSView, NSTableViewDataSource, NSTableViewDelegate
         scroll.translatesAutoresizingMaskIntoConstraints = false
 
         styleButton(
-            refreshButton, title: "Refresh", symbolName: "arrow.clockwise", primary: false,
-            tip: "Rechercher à nouveau les iPhones branchés en USB")
+            refreshButton, title: "Aggiorna", symbolName: "arrow.clockwise", primary: false,
+            tip: "Cerca di nuovo i dispositivi collegati in USB o Wi-Fi")
         refreshButton.target = self
         refreshButton.action = #selector(reload)
 
         styleButton(
-            connectButton, title: "Connect", symbolName: "cable.connector", primary: true,
-            tip: "Miroir et contrôle de l'iPhone sélectionné")
+            connectButton, title: "Connetti", symbolName: "bolt.fill", primary: true,
+            tip: "Avvia il mirroring e il controllo dell'iPhone selezionato")
         connectButton.keyEquivalent = "\r"
         connectButton.target = self
         connectButton.action = #selector(connectClicked)
@@ -116,14 +198,19 @@ final class DevicePickerView: NSView, NSTableViewDataSource, NSTableViewDelegate
 
         effect.addSubview(titleRow)
         effect.addSubview(hintLabel)
+        effect.addSubview(transportSegment)
+        effect.addSubview(noticeBox)
         effect.addSubview(scroll)
         effect.addSubview(emptyLabel)
         effect.addSubview(buttons)
 
         let panelW = effect.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.9)
         panelW.priority = .defaultHigh
-        let panelH = effect.heightAnchor.constraint(equalTo: heightAnchor, multiplier: 0.78)
+        let panelH = effect.heightAnchor.constraint(equalTo: heightAnchor, multiplier: 0.82)
         panelH.priority = .defaultHigh
+
+        let noticeHeight = noticeBox.heightAnchor.constraint(equalToConstant: 58)
+        noticeHeightConstraint = noticeHeight
 
         NSLayoutConstraint.activate([
             effect.centerXAnchor.constraint(equalTo: centerXAnchor),
@@ -133,31 +220,40 @@ final class DevicePickerView: NSView, NSTableViewDataSource, NSTableViewDelegate
             effect.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 12),
             effect.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -12),
             panelW,
-            effect.widthAnchor.constraint(lessThanOrEqualToConstant: 520),
-            effect.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
+            effect.widthAnchor.constraint(lessThanOrEqualToConstant: 540),
+            effect.widthAnchor.constraint(greaterThanOrEqualToConstant: 320),
             panelH,
-            effect.heightAnchor.constraint(lessThanOrEqualToConstant: 440),
-            effect.heightAnchor.constraint(greaterThanOrEqualToConstant: 300),
+            effect.heightAnchor.constraint(lessThanOrEqualToConstant: 480),
+            effect.heightAnchor.constraint(greaterThanOrEqualToConstant: 340),
 
             rim.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
             rim.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
             rim.topAnchor.constraint(equalTo: effect.topAnchor),
             rim.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
 
-            titleRow.topAnchor.constraint(equalTo: effect.topAnchor, constant: 20),
+            titleRow.topAnchor.constraint(equalTo: effect.topAnchor, constant: 18),
             titleRow.centerXAnchor.constraint(equalTo: effect.centerXAnchor),
 
-            hintLabel.topAnchor.constraint(equalTo: titleRow.bottomAnchor, constant: 10),
+            hintLabel.topAnchor.constraint(equalTo: titleRow.bottomAnchor, constant: 8),
             hintLabel.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 20),
             hintLabel.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -20),
 
-            scroll.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: 14),
+            transportSegment.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: 12),
+            transportSegment.centerXAnchor.constraint(equalTo: effect.centerXAnchor),
+            transportSegment.heightAnchor.constraint(equalToConstant: 26),
+
+            noticeBox.topAnchor.constraint(equalTo: transportSegment.bottomAnchor, constant: 10),
+            noticeBox.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 14),
+            noticeBox.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -14),
+            noticeHeight,
+
+            scroll.topAnchor.constraint(equalTo: noticeBox.isHidden ? transportSegment.bottomAnchor : noticeBox.bottomAnchor, constant: 10),
             scroll.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 14),
             scroll.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -14),
-            scroll.bottomAnchor.constraint(equalTo: buttons.topAnchor, constant: -14),
+            scroll.bottomAnchor.constraint(equalTo: buttons.topAnchor, constant: -12),
 
-            emptyLabel.leadingAnchor.constraint(equalTo: scroll.leadingAnchor, constant: 12),
-            emptyLabel.trailingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: -12),
+            emptyLabel.leadingAnchor.constraint(equalTo: scroll.leadingAnchor, constant: 16),
+            emptyLabel.trailingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: -16),
             emptyLabel.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
 
             buttons.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 16),
@@ -181,6 +277,7 @@ final class DevicePickerView: NSView, NSTableViewDataSource, NSTableViewDelegate
         super.layout()
         hintLabel.preferredMaxLayoutWidth = max(220, effect.bounds.width - 40)
         emptyLabel.preferredMaxLayoutWidth = max(200, effect.bounds.width - 56)
+        noticeLabel.preferredMaxLayoutWidth = max(180, effect.bounds.width - 150)
     }
 
     func stopPolling() {
@@ -188,13 +285,59 @@ final class DevicePickerView: NSView, NSTableViewDataSource, NSTableViewDelegate
         pollTimer = nil
     }
 
+    @objc private func transportSegmentChanged(_ sender: NSSegmentedControl) {
+        switch sender.selectedSegment {
+        case 0:
+            MirrorUESettings.transportMode = .usb
+        case 1:
+            MirrorUESettings.transportMode = .wifi
+        default:
+            MirrorUESettings.transportMode = .auto
+        }
+        reload()
+    }
+
+    @objc private func switchToWifiClicked() {
+        transportSegment.selectedSegment = 1
+        MirrorUESettings.transportMode = .wifi
+        reload()
+    }
+
     @objc func reload() {
         let previous = selectedDevice()?.udid
-        do {
-            devices = try Usbmux.usbDevices()
-        } catch {
-            devices = []
+        let all = (try? Usbmux.listDevices()) ?? []
+        allDetectedDevices = all
+
+        let mode = transportSegment.selectedSegment
+        switch mode {
+        case 0: // USB
+            devices = all.filter { $0.isUSB }
+        case 1: // Wi-Fi
+            devices = all.filter { $0.isNetwork }
+        default: // Tutti
+            // Prefer USB first, then Wi-Fi
+            devices = all.sorted { $0.isUSB && !$1.isUSB }
         }
+
+        // Diagnostics for USB
+        if mode == 0 && devices.isEmpty {
+            let hasWifi = all.contains(where: { $0.isNetwork })
+            if hasWifi {
+                noticeBox.isHidden = false
+                noticeLabel.stringValue = "iPhone rilevato su rete Wi-Fi, ma non via cavo USB.\nPer latenza 0–3 ms: usa porta diretta Mac e tocca «Autorizza questo computer»."
+                emptyLabel.stringValue = "Nessun dispositivo USB rilevato.\nUsa il pulsante «Usa Wi-Fi» sopra o ricollega il cavo."
+            } else {
+                noticeBox.isHidden = true
+                emptyLabel.stringValue = "Nessun iPhone rilevato.\n1. Collega il cavo USB direttamente a una porta del Mac.\n2. Sblocca lo schermo dell'iPhone e tocca «Autorizza questo computer»."
+            }
+        } else if mode == 1 && devices.isEmpty {
+            noticeBox.isHidden = true
+            emptyLabel.stringValue = "Nessun iPhone rilevato sulla rete Wi-Fi.\nAssicurati che l'iPhone e il Mac siano sulla stessa rete locale."
+        } else {
+            noticeBox.isHidden = true
+            emptyLabel.stringValue = "Nessun iPhone trovato."
+        }
+
         table.reloadData()
         emptyLabel.isHidden = !devices.isEmpty
         connectButton.isEnabled = !devices.isEmpty
@@ -261,6 +404,8 @@ private final class DeviceRowView: NSView {
     private let icon = NSImageView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let detailLabel = NSTextField(labelWithString: "")
+    private let badgeContainer = NSView()
+    private let badgeLabel = NSTextField(labelWithString: "")
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -269,9 +414,6 @@ private final class DeviceRowView: NSView {
         layer?.cornerCurve = .continuous
         layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
 
-        icon.image = NSImage(systemSymbolName: "iphone", accessibilityDescription: "iPhone")?
-            .withSymbolConfiguration(.init(pointSize: 18, weight: .medium))
-        icon.contentTintColor = .secondaryLabelColor
         icon.translatesAutoresizingMaskIntoConstraints = false
 
         nameLabel.font = .systemFont(ofSize: 14, weight: .semibold)
@@ -283,23 +425,43 @@ private final class DeviceRowView: NSView {
         detailLabel.lineBreakMode = .byTruncatingMiddle
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        badgeContainer.wantsLayer = true
+        badgeContainer.layer?.cornerRadius = 8
+        badgeContainer.layer?.cornerCurve = .continuous
+        badgeContainer.layer?.borderWidth = 1
+        badgeContainer.translatesAutoresizingMaskIntoConstraints = false
+
+        badgeLabel.font = .systemFont(ofSize: 11, weight: .semibold)
+        badgeLabel.alignment = .center
+        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
+        badgeContainer.addSubview(badgeLabel)
+
         addSubview(icon)
         addSubview(nameLabel)
         addSubview(detailLabel)
+        addSubview(badgeContainer)
 
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 22),
-            icon.heightAnchor.constraint(equalToConstant: 22),
+            icon.widthAnchor.constraint(equalToConstant: 24),
+            icon.heightAnchor.constraint(equalToConstant: 24),
+
+            badgeContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            badgeContainer.centerYAnchor.constraint(equalTo: centerYAnchor),
+            badgeContainer.heightAnchor.constraint(equalToConstant: 24),
+
+            badgeLabel.leadingAnchor.constraint(equalTo: badgeContainer.leadingAnchor, constant: 8),
+            badgeLabel.trailingAnchor.constraint(equalTo: badgeContainer.trailingAnchor, constant: -8),
+            badgeLabel.centerYAnchor.constraint(equalTo: badgeContainer.centerYAnchor),
 
             nameLabel.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
-            nameLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            nameLabel.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: badgeContainer.leadingAnchor, constant: -8),
+            nameLabel.topAnchor.constraint(equalTo: topAnchor, constant: 11),
 
             detailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            detailLabel.trailingAnchor.constraint(equalTo: nameLabel.trailingAnchor),
-            detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
+            detailLabel.trailingAnchor.constraint(lessThanOrEqualTo: badgeContainer.leadingAnchor, constant: -8),
+            detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 3),
             detailLabel.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -10),
         ])
     }
@@ -309,10 +471,30 @@ private final class DeviceRowView: NSView {
 
     func configure(device: DeviceInfo) {
         nameLabel.stringValue = device.name ?? "iPhone"
-        let model = device.productType ?? "unknown"
-        let version = device.productVersion.map { "iOS \($0)" } ?? "iOS —"
-        let udid = device.udid
-        detailLabel.stringValue = "\(model) · \(version) · \(udid)"
-        toolTip = "\(device.name ?? "iPhone")\n\(model) · \(version)\nUDID \(udid)"
+        let model = device.productType ?? "iPhone"
+        let version = device.productVersion.map { "iOS \($0)" } ?? "iOS"
+        let shortUdid = String(device.udid.prefix(8)) + "…"
+        detailLabel.stringValue = "\(model) · \(version) · \(shortUdid)"
+
+        let isUsb = device.isUSB
+        if isUsb {
+            icon.image = NSImage(systemSymbolName: "cable.connector", accessibilityDescription: "Cavo USB")?
+                .withSymbolConfiguration(.init(pointSize: 18, weight: .semibold))
+            icon.contentTintColor = .systemGreen
+            badgeLabel.stringValue = "⚡ Cavo USB · 0–3 ms"
+            badgeLabel.textColor = .systemGreen
+            badgeContainer.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.12).cgColor
+            badgeContainer.layer?.borderColor = NSColor.systemGreen.withAlphaComponent(0.35).cgColor
+            toolTip = "\(device.name ?? "iPhone") (Cavo USB)\nLatenza ultra-bassa (0–3 ms)\n\(model) · \(version)\nUDID \(device.udid)"
+        } else {
+            icon.image = NSImage(systemSymbolName: "wifi", accessibilityDescription: "Wi-Fi")?
+                .withSymbolConfiguration(.init(pointSize: 18, weight: .semibold))
+            icon.contentTintColor = .systemBlue
+            badgeLabel.stringValue = "📶 Wi-Fi"
+            badgeLabel.textColor = .systemBlue
+            badgeContainer.layer?.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.12).cgColor
+            badgeContainer.layer?.borderColor = NSColor.systemBlue.withAlphaComponent(0.35).cgColor
+            toolTip = "\(device.name ?? "iPhone") (Wi-Fi)\nConnessione senza fili su rete locale\n\(model) · \(version)\nUDID \(device.udid)"
+        }
     }
 }
