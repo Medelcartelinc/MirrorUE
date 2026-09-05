@@ -23,8 +23,16 @@ public final class DeviceScreenCapture: NSObject, @unchecked Sendable {
     private let controlQueue = DispatchQueue(label: "mirrorue-capture.control", qos: .userInitiated)
     private let output = AVCaptureVideoDataOutput()
     private var currentInput: AVCaptureDeviceInput?
-    public var isAudioMuted: Bool = false
-    public func setAudioVolume(_ vol: Float) {}
+    private var currentAudioInput: AVCaptureDeviceInput?
+    private var audioPreviewOutput: AVCaptureAudioPreviewOutput?
+    public var isAudioMuted: Bool = false {
+        didSet {
+            audioPreviewOutput?.volume = isAudioMuted ? 0.0 : 1.0
+        }
+    }
+    public func setAudioVolume(_ vol: Float) {
+        audioPreviewOutput?.volume = max(0.0, min(1.0, vol))
+    }
     private var stopped = false
     private var attaching = false
     private var observers: [NSObjectProtocol] = []
@@ -235,6 +243,33 @@ public final class DeviceScreenCapture: NSObject, @unchecked Sendable {
             if self.session.canAddOutput(self.output), !self.session.outputs.contains(self.output) {
                 self.session.addOutput(self.output)
             }
+
+            // Attach iPhone Audio Input and route directly to Mac speakers via AVCaptureAudioPreviewOutput
+            if let oldAudio = self.currentAudioInput {
+                self.session.removeInput(oldAudio)
+                self.currentAudioInput = nil
+            }
+            if let audioDev = Self.findAudioDevice(matching: device.localizedName) {
+                if let audioInput = try? AVCaptureDeviceInput(device: audioDev), self.session.canAddInput(audioInput) {
+                    self.session.addInput(audioInput)
+                    self.currentAudioInput = audioInput
+                    fputs("MediaKit: attached iPhone audio input: \(audioDev.localizedName)\n", stderr)
+                }
+            }
+            if self.audioPreviewOutput == nil {
+                let preview = AVCaptureAudioPreviewOutput()
+                preview.volume = self.isAudioMuted ? 0.0 : 1.0
+                if self.session.canAddOutput(preview) {
+                    self.session.addOutput(preview)
+                    self.audioPreviewOutput = preview
+                    fputs("MediaKit: attached audio preview output to Mac speakers\n", stderr)
+                }
+            } else if let preview = self.audioPreviewOutput, !self.session.outputs.contains(preview) {
+                if self.session.canAddOutput(preview) {
+                    self.session.addOutput(preview)
+                }
+            }
+
             // Request ProMotion-class capture (default 120). Device-level
             // activeVideoMinFrameDuration throws on this CMIO plugin — set the
             // connection instead. Override with MIRRORUE_CAPTURE_FPS.
@@ -312,6 +347,24 @@ public final class DeviceScreenCapture: NSObject, @unchecked Sendable {
                 $0.hasMediaType(.muxed) || ($0.hasMediaType(.video) && $0.localizedName.localizedCaseInsensitiveContains("iPhone"))
             }) {
                 return found
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        return nil
+    }
+
+    private static func findAudioDevice(matching deviceName: String, attempts: Int = 10) -> AVCaptureDevice? {
+        for _ in 0..<attempts {
+            let discovery = AVCaptureDevice.DiscoverySession(
+                deviceTypes: [.external, .microphone], mediaType: .audio, position: .unspecified
+            )
+            let clean = deviceName.replacingOccurrences(of: "\\s*\\(\\d+\\)", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let match = discovery.devices.first(where: {
+                $0.localizedName.localizedCaseInsensitiveContains("iPhone") ||
+                (!clean.isEmpty && $0.localizedName.localizedCaseInsensitiveContains(clean))
+            }) {
+                return match
             }
             Thread.sleep(forTimeInterval: 0.1)
         }

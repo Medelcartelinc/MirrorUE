@@ -93,6 +93,8 @@ cat << 'EOF' > "$APP_BUNDLE/Contents/Info.plist"
   <key>NSHighResolutionCapable</key><true/>
   <key>NSCameraUsageDescription</key>
   <string>OmniMirror needs camera permission to capture your iPhone screen at up to 120 FPS via CoreMediaIO.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>OmniMirror needs microphone permission to stream your iPhone audio directly to your Mac speakers in real time.</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict>
 </plist>

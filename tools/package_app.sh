@@ -71,6 +71,8 @@ cat > "$STAGE_DIR/MirrorUE.app/Contents/Info.plist" <<EOF
   <key>NSHighResolutionCapable</key><true/>
   <key>NSCameraUsageDescription</key>
   <string>MirrorUE needs camera permission to capture your iPhone screen at 120 FPS via CoreMediaIO.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>MirrorUE needs microphone permission to stream your iPhone audio directly to your Mac speakers in real time.</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict>
 </plist>

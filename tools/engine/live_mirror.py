@@ -169,18 +169,34 @@ async def open_tunnel(udid: str, connection_type: str):
     import pymobiledevice3.remote.userspace_tunnel as ut
 
     orig = ut.create_using_usbmux
+    types_to_try = [connection_type]
+    fallback = "Network" if connection_type == "USB" else "USB"
+    if fallback not in types_to_try:
+        types_to_try.append(fallback)
+    types_to_try.append(None)
 
-    async def _create(*args: Any, **kwargs: Any):
-        kwargs["connection_type"] = connection_type
-        return await orig(*args, **kwargs)
+    last_err = None
+    for ct in types_to_try:
+        try:
+            async def _create(*args: Any, **kwargs: Any):
+                if ct:
+                    kwargs["connection_type"] = ct
+                else:
+                    kwargs.pop("connection_type", None)
+                return await orig(*args, **kwargs)
 
-    ut.create_using_usbmux = _create  # type: ignore[assignment]
-    tunnel = ut.UserspaceRsdTunnel(serial=udid, autopair=True)
-    try:
-        rsd = await tunnel.aopen()
-    finally:
-        ut.create_using_usbmux = orig  # type: ignore[assignment]
-    return tunnel, rsd
+            ut.create_using_usbmux = _create  # type: ignore[assignment]
+            tunnel = ut.UserspaceRsdTunnel(serial=udid, autopair=True)
+            rsd = await tunnel.aopen()
+            LOG.info("Tunnel opened successfully (connection_type=%s)", ct or "auto")
+            return tunnel, rsd
+        except Exception as err:
+            last_err = err
+            LOG.debug("Tunnel attempt failed for %s: %s", ct, err)
+        finally:
+            ut.create_using_usbmux = orig  # type: ignore[assignment]
+
+    raise last_err
 
 
 class MirrorEngine:
@@ -790,20 +806,20 @@ class MirrorEngine:
         raise create_exc
 
     async def _warm_hid(self) -> None:
-        """Open UniversalHID + keyboard once the media stream is up (auth gate)."""
         try:
             await self._vnc._ensure_hid()
             LOG.info("UniversalHID connected")
         except Exception as exc:
             LOG.warning("UniversalHID warm-up failed: %s", exc)
-            return
+        try:
+            await self._vnc._ensure_indigo()
+            LOG.info("Indigo HID connected (buttons)")
+        except Exception as exc:
+            LOG.warning("Indigo HID warm-up failed: %s", exc)
         try:
             await self._ensure_keyboard_service()
         except Exception as exc:
-            LOG.warning(
-                "keyboard warm-up deferred: %s (touch still available; will retry on key)",
-                exc,
-            )
+            LOG.warning("keyboard warm-up deferred: %s", exc)
 
     async def _touch(self, op: str, x: int, y: int) -> None:
         from pymobiledevice3.remote.core_device.hid_service import (
@@ -1046,9 +1062,7 @@ async def _mirror_engine_run(self) -> None:
     )
     await hid.start()
     LOG.info("HID unix socket %s", HID_PATH)
-    await self._warm_hid()
-    if self._video is not None:
-        await self._video.start()
+
     try:
         server = await asyncio.start_server(self._handle_http, "127.0.0.1", self._http_port, reuse_address=True)
     except OSError:
@@ -1056,6 +1070,12 @@ async def _mirror_engine_run(self) -> None:
         self._http_port = server.sockets[0].getsockname()[1]
         self._write_rsd_meta(transport)
     LOG.info("control http://127.0.0.1:%s/", self._http_port)
+
+    # Warm up UniversalHID and Indigo in the background so HTTP status responds immediately
+    asyncio.create_task(self._warm_hid(), name="warm-hid")
+
+    if self._video is not None:
+        await self._video.start()
     try:
         await server.serve_forever()
     finally:

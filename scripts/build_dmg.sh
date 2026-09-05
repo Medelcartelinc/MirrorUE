@@ -13,10 +13,8 @@ VERSION="1.0.0"
 DMG_OUT="dist/OmniMirror-${VERSION}-Intel.dmg"
 ZIP_OUT="dist/OmniMirror-v${VERSION}-macOS-Intel.zip"
 
-if [[ ! -d "$APP" ]]; then
-  echo "==> $APP not found. Running ./install.sh..."
-  ./install.sh
-fi
+echo "==> Ensuring fresh build via ./install.sh..."
+./install.sh
 
 echo "==> Verifying signatures and entitlements..."
 xattr -cr "$APP"
